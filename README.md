@@ -31,7 +31,7 @@ standard. To see if `sort` is already installed, run:
 *krisp* can be installed directly from the python repository
 (testpypi for now):
 
-`pip3 install -i https://test.pypi.org/simple/ krisp`
+`pip3 install -i https://test.pypi.org/simple/krisp`
 
 ### Downloading from github
 Alternatively, *krisp* can be installed from source utilizing the
