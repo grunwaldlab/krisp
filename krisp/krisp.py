@@ -142,7 +142,7 @@ def main():
             "-a",
             "--amplicon",
             type=int,
-            help="Total amplicon length: default=120")
+            help="Total amplicon length")
     parser.add_argument(
             "--parallel",
             type=int,
@@ -173,8 +173,6 @@ def main():
     # Get diagnostic, amplicon length
     if args.diagnostic is not None:
         args.amplicon = args.conserved_left + args.conserved_right + args.diagnostic
-    elif args.amplicon is None:
-        args.amplicon = 120
     else:
         pass
 
