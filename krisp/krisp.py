@@ -13,20 +13,33 @@ from .filterAlignments import filterAlignments
 
 
 def extractSortedKmers(fasta, primer_left, primer_right, ampl_len, output,
-                       sortmem, parallel=1, verbose=True):
+                       sortmem, parallel=1, verbose=True, omit=True):
     """  Fastafile -> kmers written to output file """
     # Get kmers from the fasta file
-    kmers = kstream(fasta,
-                    kmers=ampl_len,
-                    disallow="Nn",
-                    complements=True,
-                    omitsoft=True,
-                    split=[primer_left, -primer_right],
-                    sort=True,
-                    sortmem=sortmem,
-                    sortcols=[0, 2],
-                    sortnp=parallel,
-                    parallel=parallel)
+    if omit:
+        kmers = kstream(fasta,
+                        kmers=ampl_len,
+                        disallow="Nn",
+                        complements=True,
+                        omitsoft=True,
+                        split=[primer_left, -primer_right],
+                        sort=True,
+                        sortmem=sortmem,
+                        sortcols=[0, 2],
+                        sortnp=parallel,
+                        parallel=parallel)
+    else:
+        kmers = kstream(fasta,
+                        kmers=ampl_len,
+                        disallow="Nn",
+                        complements=True,
+                        mapsoft=True,
+                        split=[primer_left, -primer_right],
+                        sort=True,
+                        sortmem=sortmem,
+                        sortcols=[0, 2],
+                        sortnp=parallel,
+                        parallel=parallel)
 
     # Write kmers to output
     if verbose:
@@ -61,7 +74,7 @@ def sortedKmerJob(input_queue):
 
 
 def sortedKmers(files, outputs, ampl_len, primer_left, primer_right,
-                parallel=1, verbose=True):
+                parallel=1, verbose=True, omit=True):
     """ Coverts a batch of files into sorted kmer files """
     # Determine the number of cores to give to each job
     job_cores = []
@@ -79,7 +92,7 @@ def sortedKmers(files, outputs, ampl_len, primer_left, primer_right,
     for filename, outfile, cores in zip(files, outputs, job_cores):
         # Get args for finding kmers
         args = (filename, primer_left, primer_right, ampl_len,
-                outfile, sortmem, cores, verbose)
+                outfile, sortmem, cores, verbose, omit)
         # Add args to job queue
         job_queue.put(args)
     for i in range(jobs):
@@ -144,6 +157,10 @@ def main():
             type=int,
             help="Total amplicon length")
     parser.add_argument(
+            "--omit-soft",
+            action="store_true",
+            help="Omit softmasked nucleotides")
+    parser.add_argument(
             "--parallel",
             type=int,
             default=1,
@@ -201,7 +218,7 @@ def main():
         # Get sorted kmers
         sortedKmers(input_files, kmer_files, args.amplicon,
                     args.conserved_left, args.conserved_right, args.parallel,
-                    verbose=args.verbose)
+                    verbose=args.verbose, omit=args.omit_soft)
 
         # Merge kmer files into a single file
         result = f"{tmpdir}/merged_file.txt"
