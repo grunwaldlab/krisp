@@ -165,7 +165,7 @@ that all of these files contain the same sequence. Note that it is possible to
 have multiple sequences listed for a single file, which may be common for
 repetitive regions or diploid (or higher) organisms.
 
-#### Note 1:
+#### Note 1: Output options
 In this example, all output is written to the terminal with the verbose
 information preceeding the alignments. Internally, the verbose data is written
 to stderr, whereas the alignments are written to stdout. In simple terms, this
@@ -187,7 +187,7 @@ output file:
 krisp {commands} -o align.txt
 ```
 
-#### Note 2:
+#### Note 2: Alignment format
 To change the alignment output to dot-format, pass the --dot-alignment flag.
 
 ### Example 2: Searching for conserved primer regions
