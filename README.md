@@ -85,6 +85,7 @@ krisp {ingroup files} \
         --conserved-right 2 \
         --diagnostic 1 \
         --verbose \
+        --dot-alignment \
         --parallel {number of processors}
 
 ```
@@ -99,6 +100,7 @@ krisp ingroup*.gz \
         --conserved-right 2 \
         --diagnostic 1 \
         --verbose \
+        --dot-alignment \
         --parallel 4
 
 ```
@@ -163,6 +165,31 @@ that all of these files contain the same sequence. Note that it is possible to
 have multiple sequences listed for a single file, which may be common for
 repetitive regions or diploid (or higher) organisms.
 
+#### Note 1:
+In this example, all output is written to the terminal with the verbose
+information preceeding the alignments. Internally, the verbose data is written
+to stderr, whereas the alignments are written to stdout. In simple terms, this
+means that the alignments can be piped to a file without the header verbosity.
+For instance, to pipe the alignments to align.txt, one can run:
+```
+krisp {commands} > align.txt
+```
+in which case the verbosity is still printed to the terminal. If the verbosity
+information is also to be saved, then it can be piped using *2>*:
+```
+krisp {commands} > align.txt 2> verbosity.txt 
+```
+
+Alternatively, one can utilize the -o flag to output the alignments to an
+output file:
+
+```
+krisp {commands} -o align.txt
+```
+
+#### Note 2:
+To change the alignment output to dot-format, pass the --dot-alignment flag.
+
 ### Example 2: Searching for conserved primer regions
 In example 2, we will be using *krisp* to search for conserved primer regions
 which span both the ingroup and outgroup. The general formula is the same as
@@ -181,6 +208,7 @@ krisp ingroup*.gz \
         --conserved-right 30 \
         --diagnostic 40 \
         --verbose \
+        --dot-alignment \
         --parallel 4
 ```
 
@@ -197,6 +225,7 @@ krisp ingroup*.gz \
         --conserved 30 \
         --amplicon 100 \
         --verbose \
+        --dot-alignment \
         --parallel 4
 ```
 
@@ -259,7 +288,8 @@ krisp ingroup*.gz \
         --outgroup outgroup*.gz \                                               
         --conserved 30 \                                                        
         --diagnostic 0 \                                                        
-        --verbose \                                                             
+        --verbose \ 
+        --dot-alignment \                                                            
         --parallel 4                                                           
 ```
 

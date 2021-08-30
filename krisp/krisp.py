@@ -10,6 +10,7 @@ from .outputAlignments import printAlignmentsParallel, writeAlignmentsParallel
 from .shared import *
 from colorama import Fore, Back, Style
 from .filterAlignments import filterAlignments
+from .Amplicon import ConservedEndAmplicons
 
 
 def extractSortedKmers(fasta, primer_left, primer_right, ampl_len, output,
@@ -155,16 +156,21 @@ def main():
             "-a",
             "--amplicon",
             type=int,
+            default=100,
             help="Total amplicon length")
     parser.add_argument(
             "--omit-soft",
             action="store_true",
-            help="Omit softmasked nucleotides")
+            help="Omit softmasked nucleotides") 
     parser.add_argument(
             "--parallel",
             type=int,
             default=1,
             help="Total number of processors to utilize: default=1")
+    parser.add_argument(
+            "--dot-alignment",
+            action="store_true",
+            help="Output as dot-based alignments")   
     parser.add_argument(
             "-o",
             "--output",
@@ -192,6 +198,9 @@ def main():
         args.amplicon = args.conserved_left + args.conserved_right + args.diagnostic
     else:
         pass
+
+    # Set output format
+    ConservedEndAmplicons.ENABLE_DOT = args.dot_alignment
 
     # Create a temporary directory to work in
     with tempfile.TemporaryDirectory(dir=args.workdir) as tmpdir:

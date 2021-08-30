@@ -203,6 +203,8 @@ class ConservedEndAmplicons:
     and a label (typically a filename). Alignments can then be printed by
     calling the str() method or printing directly.
     """
+    # Class level variables
+    ENABLE_DOT = False
     def __init__(self):
         """ Store data as a list of amplicons """
         self.amplicons = []
@@ -417,8 +419,7 @@ class ConservedEndAmplicons:
         for ampl in sorted(self.amplicons, key=lambda x: x.labels):
             result.append(str(ampl))
 
-        dot = True
-        if dot:
+        if ConservedEndAmplicons.ENABLE_DOT:
             # Mark conserved nucleotides as '.'
             top_seq = result[0]
             new_result = [top_seq]

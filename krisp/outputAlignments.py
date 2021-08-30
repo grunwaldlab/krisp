@@ -2,7 +2,6 @@ import gzip
 import multiprocessing
 import shutil
 import os
-from .Amplicon import Amplicon, ConservedEndAmplicons
 from .shared import *
 
 
@@ -12,7 +11,7 @@ def safePrint(alignments, counter, lock):
     with lock:
         # Iterate through alignments and print, increment counter
         for align in alignments:
-            print(f"> Alignment {counter.value}")
+            print(f"> Alignment_{counter.value}")
             print(align)
             counter.value += 1
 
