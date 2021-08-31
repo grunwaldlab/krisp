@@ -205,10 +205,12 @@ class ConservedEndAmplicons:
     """
     # Class level variables
     ENABLE_DOT = False
-    def __init__(self):
+    def __init__(self, ingroup=None):
         """ Store data as a list of amplicons """
         self.amplicons = []
         self.ingroup = None
+        if ingroup is not None:
+            self.ingroup = frozenset(ingroup)
 
     def labels(self):
         """ Returns the set of labels contained in this alignment """
@@ -383,42 +385,27 @@ class ConservedEndAmplicons:
 
     def setIngroup(self, grouping):
         """ Set the 'ingroup' for the alignment, only changes str format """
-        self.ingroup = frozenset(grouping)
-
-    def getPaddedAlignment(self, files, padding):
-        base_to_file = {simplename(f): f for f in files}
-        return_sequences = []
-        return_labels = []
-        # Get all amplicons
-        for amplicon in align.amplicons:
-            # Get unique tags and multiplier
-            tags = set()
-            for tag in amplicon.labels:
-                tags.add(tag)
-
-            # Add to padded alignment
-            for tag in tags:
-                for start, end, sequence in findInFasta(base_to_file(tag),
-                                                        amplicon.sequence,
-                                                        padding):
-                    # Make tag
-                    is_reverse = sequence.islower()
-                    strand = "forward" if not is_reverse else "reverse"
-                    label = (f"{filename} | start={start} | end={end} |"
-                             f"strand={strand}")
-
-                    # Add to self
-                    return_sequences.append(sequence.upper())
-                    return_labels.append(label)
-        return (return_sequences, return_labels)
+        if grouping is not None:
+            self.ingroup = frozenset(grouping)
 
     def __str__(self):
         """ Return a string representation of an alignment """
-        # Iterate through each amplicon and add to result
+        # Try splitting amplicons based on ingroup, outgroup
         result = []
-        for ampl in sorted(self.amplicons, key=lambda x: x.labels):
-            result.append(str(ampl))
+        if self.ingroup is not None:
+            in_result = []
+            out_result = []
+            for ampl in sorted(self.amplicons, key=lambda x: x.labels):
+                if set(ampl.labels) & set(self.ingroup):
+                    in_result.append(str(ampl))
+                else:
+                    out_result.append(str(ampl))
+            result = in_result + out_result
+        else:
+            for ampl in sorted(self.amplicons, key=lambda x: x.labels):
+                result.append(str(ampl))
 
+        # Switch to dot alignment if enabled
         if ConservedEndAmplicons.ENABLE_DOT:
             # Mark conserved nucleotides as '.'
             top_seq = result[0]

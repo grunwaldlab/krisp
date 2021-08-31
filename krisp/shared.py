@@ -438,7 +438,7 @@ def writeAlignmentStream(stream, output, mode="w"):
     writeAmpliconStream(ampl_stream, output, mode=mode)
 
 
-def alignmentStream(kmerfile, start=None, end=None):
+def alignmentStream(kmerfile, start=None, end=None, ingroup=None):
     """ Read a kmer file from start to end and yield alignments
 
     Parameters
@@ -459,13 +459,13 @@ def alignmentStream(kmerfile, start=None, end=None):
 
     """
     # Read the kmerfile from start to end
-    alignment = ConservedEndAmplicons()
+    alignment = ConservedEndAmplicons(ingroup)
     for amplicon in ampliconStream(kmerfile, start, end):
         # Check if this amplicon can't fit into the alignment
         if not alignment.canAdd(amplicon):
             # Different so yield this alignment and reset
             yield alignment
-            alignment = ConservedEndAmplicons()
+            alignment = ConservedEndAmplicons(ingroup)
         # Add to alignment
         alignment += amplicon
 

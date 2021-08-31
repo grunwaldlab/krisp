@@ -17,10 +17,10 @@ def safePrint(alignments, counter, lock):
 
 
 def printAlignments(kmerfile, counter, lock,
-                    start=None, end=None, print_block=10):
+                    start=None, end=None, print_block=10, ingroup=None):
     """ Helper function to print alignments from kmer file """
     # Get alignment stream
-    alignments = alignmentStream(kmerfile, start, end)
+    alignments = alignmentStream(kmerfile, start, end, ingroup)
     alignments_to_print = []
     for alignment in alignments:
         # Add to alignments list
@@ -34,7 +34,7 @@ def printAlignments(kmerfile, counter, lock,
         safePrint(alignments_to_print, counter, lock)
 
 
-def printAlignmentsParallel(kmerfile, parallel, print_block=10):
+def printAlignmentsParallel(kmerfile, parallel, print_block=10, ingroup=None):
     """ Function to print algignments from a file in parallel
 
     Parameters
@@ -63,7 +63,7 @@ def printAlignmentsParallel(kmerfile, parallel, print_block=10):
     # Create a list of job args
     job_args = []
     for start, end in fptr_start_end:
-        job_args.append((kmerfile, counter, lock, start, end, print_block))
+        job_args.append((kmerfile, counter, lock, start, end, print_block, ingroup))
 
     # Start a group of processes
     processes = []
@@ -79,10 +79,10 @@ def printAlignmentsParallel(kmerfile, parallel, print_block=10):
     return counter.value
 
 
-def writeAlignments(kmerfile, output, pid, start=None, end=None):
+def writeAlignments(kmerfile, output, pid, start=None, end=None, ingroup=None):
     """ Helper function to write alignments from kmer file """
     # Get alignment stream
-    alignments = alignmentStream(kmerfile, start, end)
+    alignments = alignmentStream(kmerfile, start, end, ingroup)
 
     # Open for writing and write output
     with gzip.open(output, 'wt') as fout:
@@ -96,7 +96,7 @@ def writeAlignments(kmerfile, output, pid, start=None, end=None):
     return found
 
 
-def writeAlignmentsParallel(kmerfile, output, parallel, workdir=None):
+def writeAlignmentsParallel(kmerfile, output, parallel, workdir=None, ingroup=None):
     """ Function to write alignments from a kmer file in parallel
 
     Parameters
@@ -133,7 +133,7 @@ def writeAlignmentsParallel(kmerfile, output, parallel, workdir=None):
         start, end = fptr_start_end[i]
         pid = i
         tmp = tmp_files[i]
-        job_args.append((kmerfile, tmp, pid, start, end))
+        job_args.append((kmerfile, tmp, pid, start, end, ingroup))
 
     # Run processes in pool
     with multiprocessing.Pool(parallel) as pool:

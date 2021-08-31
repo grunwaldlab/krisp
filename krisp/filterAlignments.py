@@ -35,5 +35,6 @@ def filterAlignments(kmerfile, output, ingroup):
     # Filter alignment stream if ingroup is not empty
     if len(ingroup):
         alignments = filterAlignmentStream(alignments, ingroup)
+
     # Write to output
     writeAlignmentStream(alignments, output)

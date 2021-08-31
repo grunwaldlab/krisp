@@ -136,27 +136,24 @@ def main():
             "-c",
             "--conserved",
             type=int,
-            default=32,
-            help="Length of conserved regions on ends of amplicon: default=32")
+            help="Length of conserved regions on ends of amplicon")
     parser.add_argument(
             "--conserved-left",
             type=int,
-            help="Length of conserved region on left of amplicon: default=32")
+            help="Length of conserved region on left of amplicon")
     parser.add_argument(
             "--conserved-right",
             type=int,
-            help="Length of conserved region on right of amplicon: default=32")
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument(
+            help="Length of conserved region on right of amplicon")
+    parser.add_argument(
             "-d",
             "--diagnostic",
             type=int,
             help="Diagnostic region length for amplicon")
-    group.add_argument(
+    parser.add_argument(
             "-a",
             "--amplicon",
             type=int,
-            default=100,
             help="Total amplicon length")
     parser.add_argument(
             "--omit-soft",
@@ -187,17 +184,42 @@ def main():
             help="Print runtime information to sys.stderr")
     args = parser.parse_args(sys.argv[1:])
 
-    # Set conserved left and right if not provided
-    if args.conserved_left is None:
-        args.conserved_left = args.conserved
-    if args.conserved_right is None:
-        args.conserved_right = args.conserved
-
-    # Get diagnostic, amplicon length
-    if args.diagnostic is not None:
-        args.amplicon = args.conserved_left + args.conserved_right + args.diagnostic
+    # Set conserved left, conserved right and amplicon
+    if args.amplicon is not None:
+        if args.diagnostic is not None:
+            # Determine conserved region lengths
+            args.conserved = (args.amplicon - args.diagnostic) // 2
+            args.conserved_left = args.conserved
+            args.conserved_right = args.conserved
+        elif args.conserved is not None:
+            # Determine diagnostic region length
+            args.diagnostic = args.amplicon - 2 * args.conserved
+            args.conserved_left = args.conserved
+            args.conserved_right = args.conserved
+        elif (args.conserved_left is not None) and (args.conserved_right is not None):
+            # Set diagnostic length
+            args.diagnostic = (args.amplicon - args.conserved_left - args.conserved_right)
+        else:
+            print("ERROR: Cound not deduce input parameters", file=sys.stderr)
+            parser.print_help(sys.stderr)
+            sys.exit(1)
+    elif args.diagnostic is not None:
+        if args.conserved is not None:
+            # Determine amplicon length
+            args.amplicon = args.diagnostic + 2 * args.conserved
+            args.conserved_left = args.conserved
+            args.conserved_right = args.conserved
+        elif (args.conserved_left is not None) and (args.conserved_right is not None):
+            # Set diagnostic length
+            args.amplicon = args.diagnostic + args.conserved_left + args.conserved_right
+        else:
+            print("ERROR: Cound not deduce input parameters", file=sys.stderr)
+            parser.print_help(sys.stderr)
+            sys.exit(1)
     else:
-        pass
+        print("ERROR: Cound not deduce input parameters", file=sys.stderr)
+        parser.print_help(sys.stderr)
+        sys.exit(1)            
 
     # Set output format
     ConservedEndAmplicons.ENABLE_DOT = args.dot_alignment
@@ -250,14 +272,19 @@ def main():
 
         # Print alignments
         found = None
+        ingroup = None
+        if len(args.outgroup):
+            ingroup = [simplename(f) for f in args.files]
         if args.output is None:
             found = printAlignmentsParallel(result,
                                             args.parallel,
-                                            1000)
+                                            print_block=1000,
+                                            ingroup=ingroup)
         else:
             found = writeAlignmentsParallel(result, args.output,
                                             args.parallel,
-                                            workdir=tmpdir)
+                                            workdir=tmpdir,
+                                            ingroup=ingroup)
 
         # Print end message
         if args.verbose:
