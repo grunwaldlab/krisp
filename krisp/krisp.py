@@ -42,6 +42,7 @@ def extractSortedKmers(fasta, primer_left, primer_right, ampl_len, output,
                         sortnp=parallel,
                         parallel=parallel)
 
+
     # Write kmers to output
     if verbose:
         # Get start time
@@ -74,8 +75,16 @@ def sortedKmerJob(input_queue):
         args = input_queue.get()
 
 
-def sortedKmers(files, outputs, ampl_len, primer_left, primer_right,
-                parallel=1, verbose=True, omit=True):
+def sortedKmersSerial(files, outputs, ampl_len, primer_left, primer_right,
+                      verbose=True, omit=True):
+   for filename, outfile in zip(files, outputs):
+        # Call base function to extract and sort args
+        extractSortedKmers(filename, primer_left, primer_right, ampl_len,
+                           outfile, "80%", 1, verbose, omit)
+
+
+def sortedKmersParallel(files, outputs, ampl_len, primer_left, primer_right,
+                        parallel=1, verbose=True, omit=True):
     """ Coverts a batch of files into sorted kmer files """
     # Determine the number of cores to give to each job
     job_cores = []
@@ -102,7 +111,7 @@ def sortedKmers(files, outputs, ampl_len, primer_left, primer_right,
 
     # Spawn jobs
     processes = []
-    for i in range(jobs):
+    for i in range(parallel):
         # Spawn process
         p = multiprocessing.Process(target=sortedKmerJob, args=(job_queue,))
         # Start process and add to process queue
@@ -247,9 +256,14 @@ def main():
             kmer_files.append(kmer_name)
 
         # Get sorted kmers
-        sortedKmers(input_files, kmer_files, args.amplicon,
-                    args.conserved_left, args.conserved_right, args.parallel,
-                    verbose=args.verbose, omit=args.omit_soft)
+        if args.parallel > 1:
+            sortedKmersParallel(input_files, kmer_files, args.amplicon,
+                                args.conserved_left, args.conserved_right, args.parallel,
+                                verbose=args.verbose, omit=args.omit_soft)
+        else:
+            sortedKmersSerial(input_files, kmer_files, args.amplicon,
+                                args.conserved_left, args.conserved_right,
+                                verbose=args.verbose, omit=args.omit_soft)
 
         # Merge kmer files into a single file
         result = f"{tmpdir}/merged_file.txt"
