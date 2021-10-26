@@ -1,5 +1,6 @@
 install:
 	python3 -m pip install  --upgrade --user pip
+	python3 -m pip install --upgrade setuptools	
 	python3 -m pip install --upgrade --user build
 	python3 -m pip install --upgrade --user colorama
 	python3 -m build --no-isolation .
