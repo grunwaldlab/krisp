@@ -67,7 +67,7 @@ def _pad_sequences(seqs, ref):
 def _print_align(seqs, ref, ref_name="Reference"):
     """Adjusts labels, prints reference and sequences
     """
-    # TODO: put primer sequences (really tricky, may be approximate)
+
     def cumulative(lists):
         """
         https://www.geeksforgeeks.org/python-program-to-find-cumulative-sum-of-a-list/
@@ -115,7 +115,39 @@ def _print_align(seqs, ref, ref_name="Reference"):
         print()
 
 
-def render_variant(seqs, ref):
+def format_seq_annot(primer, ref):
+    """Go through annotated sequences and overwrite to add primer data
+
+    Parameters:
+    -----------
+    primer: dict of list of str
+        primers identified by Primer3/ package
+    ref: list of str
+        list of alleles in the reference genome
+    Return:
+         list(?)
+    """
+    seq_annot = (["A"] * len(ref))
+    for group in seq_annot:
+        for x in range(len(ref)):
+            if primer == " ":
+                continue
+            else:
+                seq_annot.append(primer.keys())
+                x += 1
+
+    return seq_annot
+
+
+#   goal: loop through all annotation sequences (dict) and overwrite seq_annot
+#   list.append(seq_annot)[number] = seq (?)
+#   initialize at starting location and then increment location by one
+#   then the blank spaces should have been populated with the sequences
+    #   align to element not character
+    #   dict where key is sequence, and value is the start parameter
+
+
+def render_variant(seqs, ref):#(,seq_annot):
     """Displaying diagnostic variant in human-readable form
 
     Parameters
@@ -126,6 +158,7 @@ def render_variant(seqs, ref):
         the reference used to call the variants
     """
     seqs = _mask_same(seqs, ref)
+    seqs.update(format_seq_annot(primer, ref))
     seqs, ref = _pad_sequences(seqs, ref)
     _print_align(seqs, ref)
 
@@ -152,4 +185,5 @@ if __name__ == "__main__":
                       "", "G", "<123G12?>", "A", "C", "A", "G", "G", "T", "",
                       "G", "<123G12?>", "A", "C", "A", "G", "G", "T", "", "G",
                       "<123G12?>", "A", "C"]}
+    primer = {'ATTGCATGA': 33, 'TGGTCCATGAT': 45, 'ATTGTAAC': 12}
     render_variant(seqs, ref)
