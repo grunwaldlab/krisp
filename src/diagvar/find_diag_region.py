@@ -13,6 +13,8 @@ from Bio.Data import IUPACData
 from contextlib import contextmanager
 from collections import Counter
 
+from .find_diag_var import find_diag_var
+
 # Constants
 SNP_DELIM = ('<', '>')
 PRIMER_DELIM =  ('(', ')')
@@ -86,8 +88,9 @@ def find_diag_region(
     variants : an iterable returning variants or str
         A series of consecutive variants in which to identifiy diagnostic 
         clusters of variants.
-    groups : list/dict/tuple of list/tuple of str
-        The sample IDs for each group to find diagnostic clusters for.
+    groups : dict of list/tuple of str
+        The sample IDs for each group to find diagnostic clusters for,
+        named by group.
     nontarget : list of str, optional
         The sample IDs that should be distict from those in `groups`, but
         are otherwise not of interest. `min_samples` does not apply to these.
@@ -140,17 +143,11 @@ def find_diag_region(
         subset of samples. TBD.
     """
     flank = 100
-    group_samples = "dict of samples in each group named by group" #TODO
-    windows = {g: var_sliding_window(subset, spacer_len=spacer_len, flank_len=flank) for g, subset in group_samples.items()}
+    windows = {g: var_sliding_window(subset, spacer_len=spacer_len, flank_len=flank) for g, subset in groups.items()}
     for variant in find_diag_var():
-        for group, subset in group_samples.items():
+        for group, subset in groups.items():
             windows[group].add_variant(variant)
             _check_variant_cluster(windows[group].spacer, subset)
             
-            # Check if spacer meets conditions
-            if sum([_is_diagostic(rec) for rec in windows[group].spacer]) > min_diag_var:
-                primer3_results = _primer3()
-                if "has primers":
-                    pass #yeild results
         
      
