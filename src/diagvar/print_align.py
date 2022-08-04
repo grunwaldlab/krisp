@@ -51,7 +51,11 @@ def _pad_sequences(seqs, ref):
     def _pad_ref_and_seqs(col_i, width, pad_str):
         ref[col_i] = ref[col_i].center(width, pad_str)
         for seq_name in seqs.keys():
-            seqs[seq_name][col_i] = seqs[seq_name][col_i].center(width, pad_str)
+            if seq_name == "oligos": #TODO: fix in future (make maintainable)
+                seqs[seq_name][col_i] = seqs[seq_name][col_i].center(width, " ")
+            else:
+                seqs[seq_name][col_i] = seqs[seq_name][col_i].center(width,
+                                                                     pad_str)
         return None
 
     for col_index in range(len(ref)):
@@ -127,20 +131,26 @@ def format_seq_annot(primer, ref):
     Return:
          list(?)
     """
-    seq_annot = (["A"] * len(ref))
-    for group in seq_annot:
-        for x in range(len(ref)):
-            if primer == " ":
-                continue
-            else:
-                seq_annot.append(primer.keys())
-                x += 1
+    output = ([" "] * len(ref))
+    # for group in output:
+    #     for x in range(len(ref)):
+    #         if primer == "":
+    #             continue
+    #         else:
+    #             output.append(primer.keys()) #overwriting
+    #             x += 1
+    # need a loop for the primer to write primer to output
+    for seq, start in primer.items():
+        #length of the sequence, just count; avoid while loops
+        for index, nucleotide in enumerate(seq):
+            output[start + index] = nucleotide
 
-    return seq_annot
+
+    return output
 
 
 #   goal: loop through all annotation sequences (dict) and overwrite seq_annot
-#   list.append(seq_annot)[number] = seq (?)
+#   dict.update(seq_annot)[number] = seq (?)
 #   initialize at starting location and then increment location by one
 #   then the blank spaces should have been populated with the sequences
     #   align to element not character
@@ -158,7 +168,7 @@ def render_variant(seqs, ref):#(,seq_annot):
         the reference used to call the variants
     """
     seqs = _mask_same(seqs, ref)
-    seqs.update(format_seq_annot(primer, ref))
+    seqs["oligos"]= format_seq_annot(primer, ref)
     seqs, ref = _pad_sequences(seqs, ref)
     _print_align(seqs, ref)
 
