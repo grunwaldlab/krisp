@@ -51,7 +51,7 @@ def _pad_sequences(seqs, ref):
     def _pad_ref_and_seqs(col_i, width, pad_str):
         ref[col_i] = ref[col_i].center(width, pad_str)
         for seq_name in seqs.keys():
-            if seq_name == "oligos": #TODO: fix in future (make maintainable)
+            if seqs[seq_name][col_i] == " ": #used for printing oligos sequences
                 seqs[seq_name][col_i] = seqs[seq_name][col_i].center(width, " ")
             else:
                 seqs[seq_name][col_i] = seqs[seq_name][col_i].center(width,
@@ -132,32 +132,14 @@ def format_seq_annot(primer, ref):
          list(?)
     """
     output = ([" "] * len(ref))
-    # for group in output:
-    #     for x in range(len(ref)):
-    #         if primer == "":
-    #             continue
-    #         else:
-    #             output.append(primer.keys()) #overwriting
-    #             x += 1
-    # need a loop for the primer to write primer to output
     for seq, start in primer.items():
-        #length of the sequence, just count; avoid while loops
         for index, nucleotide in enumerate(seq):
             output[start + index] = nucleotide
-
 
     return output
 
 
-#   goal: loop through all annotation sequences (dict) and overwrite seq_annot
-#   dict.update(seq_annot)[number] = seq (?)
-#   initialize at starting location and then increment location by one
-#   then the blank spaces should have been populated with the sequences
-    #   align to element not character
-    #   dict where key is sequence, and value is the start parameter
-
-
-def render_variant(seqs, ref):#(,seq_annot):
+def render_variant(seqs, ref, annots=None):
     """Displaying diagnostic variant in human-readable form
 
     Parameters
@@ -166,9 +148,13 @@ def render_variant(seqs, ref):#(,seq_annot):
         sequences to align, named by group
     ref : list of str
         the reference used to call the variants
+    annots : dict of str, int
+        sequences to annotate alignment, keys are sequences, values are start
+        position in the alignment
     """
     seqs = _mask_same(seqs, ref)
-    seqs["oligos"]= format_seq_annot(primer, ref)
+    if annots is not None:
+        seqs["oligos"] = format_seq_annot(annots, ref)
     seqs, ref = _pad_sequences(seqs, ref)
     _print_align(seqs, ref)
 
@@ -195,5 +181,6 @@ if __name__ == "__main__":
                       "", "G", "<123G12?>", "A", "C", "A", "G", "G", "T", "",
                       "G", "<123G12?>", "A", "C", "A", "G", "G", "T", "", "G",
                       "<123G12?>", "A", "C"]}
-    primer = {'ATTGCATGA': 33, 'TGGTCCATGAT': 45, 'ATTGTAAC': 12}
-    render_variant(seqs, ref)
+    annotation = {'ATTGCATGA': 33, 'TGGTCCATGAT': 45, 'ATTGTAAC': 12}
+    #TODO: add information about forward and reverse primers
+    render_variant(seqs, ref, annots=annotation)
