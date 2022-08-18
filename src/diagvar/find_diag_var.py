@@ -15,8 +15,8 @@ from collections import Counter
 
 # Constants
 SNP_DELIM = ('<', '>')
-PRIMER_DELIM =  ('(', ')')
-CRRNA_DELIM =  ('{', '}')
+PRIMER_DELIM = ('(', ')')
+CRRNA_DELIM = ('{', '}')
 HETERO_DELIM = '/'
 UNKNOWN_CHAR = '?'
 
@@ -66,49 +66,70 @@ def _check_variant(
         The sample names representing the group to be distinguished
         from the target.
     """
-    # Get genotypes for each group
-    group_dt = _group_genotypes(variant, groups)
-    diag_gt = _diagnostic_gts(variant, groups)
-        
-    # Ignore sites that are in low mapping quality regions
-    if variant.info['MQ'] < min_map_qual:
-        return "Low mapping"
-        
-    
-    # Ignore sites with not enough reads/samples
-    group_map = {sample: group for group, samples in groups.items() \
-                 for sample in samples}
-    samples_count = Counter([group_map[x.name] for x in variant.samples.values() \
-                            if x.name in group_map and x['DP'] >= min_reads and x['GQ'] >= min_geno_qual])
-    not_enough = {g: g in samples_count and samples_count[g] < min_samples for g in groups}
-    if any(not_enough.values()):
-        return "Missing data"
-        
-    # Ignore spanning deletions
-    diag_gt = {k: None if v == "*" else v for k, v in diag_gt.items()}
-
-    # Ignore indels
-    diag_gt = {k: v if v is not None and len(v) == len(variant.ref) else None for k, v in diag_gt.items()}
-
-    # Ignore sites without enough canidate variants
-    if sum([x != None for x in diag_gt.values()]) < min_groups:
-        return "Few groups"
-    
-    # Return which variants are diagnostic for each group
-    return diag_gt
+    pass
+    # # Get genotypes for each group
+    # group_dt = _group_genotypes(variant, groups)
+    # diag_gt = _diagnostic_gts(variant, groups)
+    #
+    # # Ignore sites that are in low mapping quality regions
+    # if variant.info['MQ'] < min_map_qual:
+    #     return "Low mapping"
+    #
+    #
+    # # Ignore sites with not enough reads/samples
+    # group_map = {sample: group for group, samples in groups.items() \
+    #              for sample in samples}
+    # samples_count = Counter([group_map[x.name] for x in variant.samples.values() \
+    #                         if x.name in group_map and x['DP'] >= min_reads and x['GQ'] >= min_geno_qual])
+    # not_enough = {g: g in samples_count and samples_count[g] < min_samples for g in groups}
+    # if any(not_enough.values()):
+    #     return "Missing data"
+    #
+    # # Ignore spanning deletions
+    # diag_gt = {k: None if v == "*" else v for k, v in diag_gt.items()}
+    #
+    # # Ignore indels
+    # diag_gt = {k: v if v is not None and len(v) == len(variant.ref) else None for k, v in diag_gt.items()}
+    #
+    # # Ignore sites without enough canidate variants
+    # if sum([x != None for x in diag_gt.values()]) < min_groups:
+    #     return "Few groups"
+    #
+    # # Return which variants are diagnostic for each group
+    # return diag_gt
 
 
 class GroupedVariant:
     
-    def __init__(self, variant, groups):
+    def __init__(self, variant, groups,
+                 min_samples=5,
+                 min_reads=10,
+                 min_geno_qual=40):
         self.variant = variant
         self.groups = groups
-        self._counts = _group_genotypes(variant, groups)
-        
-    @staticmethod
-    def _count_genotypes(variant, subset=None, hetero=True):
+        # self.groups = {g: [x for x in ids if x in variant.samples.keys()] for g, ids in groups.items()}
+        self.min_samples = min_samples
+        self.min_reads = min_reads
+        self.min_geno_qual = min_geno_qual
+
+        # Store counts of samples for each group
+        #   Note: this can be different from the sum of counts in allele_counts below due to heterozygous positions
+        self.sample_counts = self._sample_counts(variant, groups, min_reads=min_reads, min_geno_qual=min_geno_qual)
+
+        # Store counts of each allele for each group
+        self.allele_counts = self._allele_counts(variant, groups, min_reads=min_reads, min_geno_qual=min_geno_qual)
+
+        # Store which alleles are conserved for each group
+        self.conserved = self._conserved(variant, groups, min_samples=min_samples, min_reads=min_reads, min_geno_qual=min_geno_qual)
+
+        # Store which alleles are diagnostic for each group
+        self.diagnostic = self._diagnostic(variant, groups, min_samples=min_samples, min_reads=min_reads, min_geno_qual=min_geno_qual)
+
+    @classmethod
+    def _count_genotypes(cls, variant, subset=None, hetero=True, unknown=True, min_reads=0,
+                         min_geno_qual=0):
         """For a variant return the counts of genotypes for a subset of samples.
-        
+
         Parameters
         ----------
         variant : pysam.libcbcf.VariantRecord
@@ -118,21 +139,31 @@ class GroupedVariant:
         hetero : bool
             If `False`, heterozygous variants are counted once for each
             haplotype allele instead of counting once as a pair (e.g. "A/T")
-            
+
         Returns
         -------
         dict of int
             The number of each genotype
         """
+        # If no subset is specified, use all samples
         if subset is None:
             subset = variant.samples.keys()
-        
+
+        # Filter samples based on data quality
+        read_counts = GroupedVariant._sample_read_counts(variant)
+        geno_quals = GroupedVariant._sample_geno_qual(variant)
+        subset = [s for s in subset \
+                  if s in variant.samples.keys() \
+                  if read_counts[s] >= min_reads \
+                  and geno_quals[s] >= min_geno_qual]
+        # Count alleles
         counts = {}
         for sample_id, data in variant.samples.items():
             if subset is not None and sample_id not in subset:
                 continue
-            if data['DP'] == 0: # https://gatk.broadinstitute.org/hc/en-us/articles/6012243429531-GenotypeGVCFs-and-the-death-of-the-dot
-                alleles = UNKNOWN_CHAR 
+            if data[
+                'DP'] == 0:  # https://gatk.broadinstitute.org/hc/en-us/articles/6012243429531-GenotypeGVCFs-and-the-death-of-the-dot
+                alleles = UNKNOWN_CHAR
             else:
                 alleles = sorted(list(set(data.alleles)))
                 alleles = [UNKNOWN_CHAR if a is None else a for a in alleles]
@@ -143,12 +174,16 @@ class GroupedVariant:
                     counts[allele] += 1
                 else:
                     counts[allele] = 1
+        # Remove ambiguous alleles
+        if not unknown:
+            counts = {k: v for k, v in counts.items() if k != "?"}
         return counts
 
-
-    def _group_genotypes(variant, groups, hetero=True):
+    @classmethod
+    def _allele_counts(cls, variant, groups, hetero=True, unknown=True, min_reads=10,
+                       min_geno_qual=40):
         """For a given variant return the counts of each genotype for each group.
-      
+
         Parameters
         ----------
         variant : pysam.libcbcf.VariantRecord
@@ -158,16 +193,62 @@ class GroupedVariant:
         hetero : bool
             If `False`, heterozygous variants are counted once for each
             haplotype allele instead of counting once as a pair (e.g. "A/T")
-            
+
         Returns
         -------
         dict of dict of int
             For each group: the number of counts for each allele.
         """
-        return {group_name: _count_genotypes(variant, samples, hetero) \
-                for group_name, samples in groups.items()}
+        output = {}
+        for group, samples in groups.items():
+            output[group] = GroupedVariant._count_genotypes(variant,
+                                                            samples,
+                                                            hetero=hetero,
+                                                            unknown=unknown,
+                                                            min_reads=min_reads,
+                                                            min_geno_qual=min_geno_qual)
+        return output
 
-    def _diagnostic_gts(variant, groups):
+    @classmethod
+    def _conserved(cls,
+                   variant,
+                   groups,
+                   unknown=False,
+                   min_samples=5,
+                   min_reads=10,
+                   min_geno_qual=40):
+        """Check if an allele is conserved for each group
+
+        Return
+        ------
+        dict of str/None
+            Groups as keys, allele/None as value
+        """
+        # Get allele counts for each group
+        geno_counts = cls._allele_counts(variant,
+                                         groups,
+                                         hetero=False,
+                                         unknown=unknown,
+                                         min_reads=min_reads,
+                                         min_geno_qual=min_geno_qual)
+        # Check if there is only one allele and there is enough reads
+        samp_counts = cls._sample_counts(variant,
+                                         groups,
+                                         min_reads=min_reads,
+                                        min_geno_qual=min_geno_qual)
+        output = {}
+        for group, counts in geno_counts.items():
+            if len(counts) == 1 and samp_counts[group] >= min_samples:
+                output[group] = list(counts.keys())[0]
+            else:
+                output[group] = None
+        return output
+
+    @classmethod
+    def _diagnostic(cls, variant, groups, conserved = True,
+                    min_samples = 5,
+                    min_reads = 10,
+                    min_geno_qual = 40):
         """
         Get conserved variants only present in each group.
         
@@ -184,14 +265,18 @@ class GroupedVariant:
             For each group, the alleles that are conserved and unique to
             that group.
         """
+        # If there are not enough samples for any group, no diagnostic variants can be found
+        samp_counts = cls._sample_counts(variant, groups, min_reads=min_reads, min_geno_qual=min_geno_qual)
+        if any([n < min_samples for n in samp_counts.values()]):
+            return {group: None for group in groups.keys()}
         # Get genotypes for each group
-        geno_counts = _group_genotypes(variant, groups, hetero=False)
+        geno_counts = cls._allele_counts(variant, groups, hetero=False, unknown=False, min_reads=min_reads, min_geno_qual=min_geno_qual)
         # Get alleles for each groups
         alleles = {}
         for g in groups.keys():
             alleles[g] = set(geno_counts[g].keys())
-            if UNKNOWN_CHAR in alleles[g]:
-                alleles[g].remove(UNKNOWN_CHAR)
+            # if UNKNOWN_CHAR in alleles[g]:
+            #     alleles[g].remove(UNKNOWN_CHAR)
         # Remove alleles for each group that appear in other groups
         diag = copy.deepcopy(alleles)
         for group in groups.keys():
@@ -205,24 +290,72 @@ class GroupedVariant:
             else:
                 diag[group] = list(diag[group])[0]
         return diag
-
     
-    def counts(self, hetero = True):
-        output = copy.deepcopy(self._counts)
-        if not hetero:
-            for group, counts in self._counts.items():
-                for allele, count in counts.items():
-                    if HETERO_DELIM in allele:
-                        hetero_parts = allele.split(HETERO_DELIM)
-                        # Add counts for each haplotype
-                        for part in hetero_parts:
-                            if part in output[group]:
-                                output[group][part] += count
-                            else:
-                                output[group][part] = count
-                        # Remove the heterozygous count
-                        del output[group][allele]
+    @staticmethod
+    def _sample_read_counts(variant):
+        """Count the number of reads for each sample.
+        
+        Return
+        ------
+        dict of number
+            The number of reads in each sample
+        """
+        return {s.name: s['DP'] for s in variant.samples.values()}
+    
+    @staticmethod
+    def _sample_geno_qual(variant):
+        """The genotype quality score for each sample.
+        
+        Return
+        ------
+        dict of number
+            The genotype quality score in each sample
+        """
+        return {s.name: s['GQ'] for s in variant.samples.values()}
+    
+    @staticmethod
+    def _subset_sample_counts(variant, subset, min_reads = 10, min_geno_qual = 40):
+        """Number of samples passing filters in a given subset"""
+        read_counts = GroupedVariant._sample_read_counts(variant)
+        geno_quals = GroupedVariant._sample_geno_qual(variant)
+        return(sum([read_counts[s] >= min_reads \
+                    and geno_quals[s] >= min_geno_qual \
+                    for s in subset if s in read_counts]))
+
+    @classmethod
+    def _sample_counts(cls, variant, groups, min_reads = 10, min_geno_qual = 40):
+        """Number of samples in each group"""
+        output = {}
+        for group, samples in groups.items():
+            output[group] = cls._subset_sample_counts(variant, samples,
+                                                       min_reads=min_reads, min_geno_qual=min_geno_qual)
         return output
+
+
+    def all_conserved(self,
+                       unknown = False,
+                       min_samples = 5,
+                       min_reads = 10,
+                       min_geno_qual = 40):
+        """Check if an allele is conserved in all groups
+        
+        Return
+        ------
+        str/None
+            If all groups have the same variant, return the allele,
+            otherwise return None
+        """
+        pass
+        # is_consv = self.conserved(unknown = unknown,
+        #                           min_samples = min_samples,
+        #                           min_reads = min_reads,
+        #                           min_geno_qual = min_geno_qual)
+        # alleles = set(is_consv.values())
+        # if len(alleles) == 1:
+        #     return list(alleles)[0]
+        # else:
+        #     return None
+    
 
 
 def find_diag_var(
@@ -270,8 +403,7 @@ def find_diag_var(
         
     Yields
     ------
-    object?
-        information on regions that contain variants diagnostic for a
-        subset of samples. TBD.
+    GroupedVariant objects for variants that pass the filters 
     """
     pass
+
