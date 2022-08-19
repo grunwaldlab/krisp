@@ -377,7 +377,7 @@ def find_diag_region(
                                          min_geno_qual=min_geno_qual,
                                          min_map_qual=min_map_qual)
     windower = window_generator(vcf_reader, groups, window_width,
-                                flank_len=flank)
+                                flank_len=flank, spacer_len=spacer_len)
     for group, window in windower:
         region = GroupedRegion(window.spacer, groups)
         # Are all the variants in the spacer conserved?
