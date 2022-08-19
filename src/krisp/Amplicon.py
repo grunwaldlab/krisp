@@ -171,8 +171,8 @@ class Amplicon:
             # Create amplicon and return
             return Amplicon(primer, diag, reverse, *labels)
         else:
-            return None
             raise ValueError(f"Unrecognised string format : {string}")
+            #removed "return None" as it was unreachable
 
     def write(self, fileptr):
         """ Function to write self to a file such that it can be read later

@@ -21,7 +21,8 @@ PRIMER_DELIM =  ('(', ')')
 CRRNA_DELIM =  ('{', '}')
 HETERO_DELIM = '/'
 UNKNOWN_CHAR = '?'
-iupac_key = {tuple((x for x in sorted(v))):k for k,v in IUPACData.ambiguous_dna_values.items()}
+iupac_key = {tuple((x for x in sorted(v))):k for k,v in
+             IUPACData.ambiguous_dna_values.items()}
 iupac_key[(UNKNOWN_CHAR, )] = 'N'
 
 def collapse_to_iupac(seqs):
@@ -29,7 +30,7 @@ def collapse_to_iupac(seqs):
     
     Parameters:
     -----------
-    segs : list of str
+    seqs : list of str
         The sequences to combine.
     
     Returns
@@ -86,7 +87,7 @@ class GroupedRegion:
         Return
         ------
         int/None
-            The number of nucelotides spanned by the variants. If any
+            The number of nucleotides spanned by the variants. If any
             of the samples have variable length alleles, then a single
             length cannot be determined and None is returned.
         """
@@ -102,7 +103,10 @@ class GroupedRegion:
         """
         output = []
         for variant in variants:
-            output.append(GroupedVariant._count_genotypes(variant, subset=subset, hetero=hetero, unknown=unknown))
+            output.append(GroupedVariant._count_genotypes(variant,
+                                                          subset=subset,
+                                                          hetero=hetero,
+                                                          unknown=unknown))
         return output
     
     @staticmethod
@@ -137,7 +141,7 @@ class GroupedRegion:
             If not None or '', a string composed of the first and last
             character used to border sets of multiple alleles. Has
             no effect if consensus is True.
-        sep The character used to seperate multiple alleles.
+        sep The character used to separate multiple alleles.
         
         Returns
         -------
@@ -148,21 +152,29 @@ class GroupedRegion:
         # Create rendered text for variant information
         rendered = []
         for variant in variants:
-            allele_counts = GroupedVariant._count_genotypes(variant, subset=subset, hetero=hetero, unknown=unknown,
-                               min_reads=min_reads, min_geno_qual=min_geno_qual)
+            allele_counts = GroupedVariant._count_genotypes(variant,
+                                                            subset=subset,
+                                                            hetero=hetero,
+                                                            unknown=unknown,
+                                                            min_reads=min_reads,
+                                                            min_geno_qual=
+                                                            min_geno_qual)
             sample_count = GroupedVariant._subset_sample_counts(variant, subset,
                                                       min_reads=min_reads,
-                                                      min_geno_qual=min_geno_qual)
+                                                      min_geno_qual=
+                                                                min_geno_qual)
             if len(allele_counts) == 0:
                 allele_counts = {'?':0}
-            if conserved and (len(allele_counts) != 1 or sample_count < min_samples):
+            if conserved and (len(allele_counts) != 1 or sample_count <
+                              min_samples):
                 text = None
             else:
                 if consensus:
                     text = collapse_to_iupac(allele_counts.keys())
                 else:
                     if counts:
-                        text_parts = [a + str(c) for a, c in allele_counts.items()]
+                        text_parts = [a + str(c) for a, c in
+                                      allele_counts.items()]
                     else:
                         text_parts = allele_counts.keys()
                     text = sep.join(text_parts)
@@ -186,7 +198,8 @@ class GroupedRegion:
             for var, rend in zip(variants, rendered):
                 replace_start = var.pos - ref_start
                 replace_end = replace_start + len(var.ref)
-                ref_seq = ref_seq[:replace_start] + [rend] + ref_seq[replace_end:]
+                ref_seq = ref_seq[:replace_start] + [rend] + \
+                          ref_seq[replace_end:]
             return ref_seq
     
     def sequence(self, reference = None, counts = False, ):
@@ -207,9 +220,10 @@ class GroupedRegion:
 
 class var_sliding_window:
     """Stores all the queues so that each group can have its own spacer queue"""
-    def __init__(self, subset, spacer_len, flank_len, reference = None, min_reads = 0,
-                         min_geno_qual = 0,
-                         min_samples = 0):
+    def __init__(self, subset, spacer_len, flank_len, reference = None,
+                 min_reads = 0,
+                 min_geno_qual = 0,
+                 min_samples = 0):
         self.subset = subset
         self.spacer_len = spacer_len
         self.flank_len = flank_len
@@ -240,7 +254,8 @@ class var_sliding_window:
         return len(''.join(self.spacer_seq()))
 
 
-def window_generator(min_samples, min_reads, min_geno_qual, spacer_len, flank_len = 100):
+def window_generator(min_samples, min_reads, min_geno_qual, spacer_len,
+                     flank_len = 100):
     filter_args = {"min_samples": min_samples,
         "min_reads": min_reads,
         "min_geno_qual": min_geno_qual}
@@ -248,7 +263,8 @@ def window_generator(min_samples, min_reads, min_geno_qual, spacer_len, flank_le
     windows = {}
     for group, subset in groups.items():
         windows[group] = var_sliding_window(subset, spacer_len=spacer_len,
-                                            flank_len=flank, reference = ref, **filter_args)
+                                            flank_len=flank, reference = ref,
+                                            **filter_args)
     # Read through variants and put into windows
     for index, variant in enumerate(variants):
         for group in groups.keys():
@@ -294,13 +310,13 @@ def find_diag_region(
     Parameters
     ----------
     variants : an iterable returning variants or str
-        A series of consecutive variants in which to identifiy diagnostic 
+        A series of consecutive variants in which to identify diagnostic
         clusters of variants.
     groups : dict of list/tuple of str
         The sample IDs for each group to find diagnostic clusters for,
         named by group.
     nontarget : list of str, optional
-        The sample IDs that should be distict from those in `groups`, but
+        The sample IDs that should be distinct from those in `groups`, but
         are otherwise not of interest. `min_samples` does not apply to these.
     reference : Bio.SeqRecord.SeqRecord or str, optional
         A reference sequence to use or the path to a FASTA file with 
@@ -318,12 +334,12 @@ def find_diag_region(
         indel variant can represent multiple diagnostic nucleotides.
         See `min_vars` to filter based on number of variants.
     min_groups : int, optional
-        The minimum number of `groups` that must be uniquly distinguished by
+        The minimum number of `groups` that must be uniquely distinguished by
         the same cluster of variants.
     min_samples : int, optional
         The minimum number of samples that must represent each group in
         `groups` for a given variants. Samples must pass the `min_reads` 
-        and `min_geno_qual` filters to count twoards this minimum.
+        and `min_geno_qual` filters to count towards this minimum.
     min_reads : int, optional
         The minimum number of reads a sample have at the location of a
         given variant.
@@ -342,7 +358,7 @@ def find_diag_region(
         the primers will amplify.
     offset_left : int, optional
         The minimum number of bases on the 3' end of the spacer before
-        the first diagnositic SNP.
+        the first diagnostic SNP.
     offset_right : int, optional
         The number of bases on the 5' end after the last diagnostic SNP.
         
@@ -355,8 +371,13 @@ def find_diag_region(
     flank = 100 # TODO: base on max amplicon size
     window_width = spacer_len - offset_right - offset_left
     ref = GroupedRegion._get_reference('test_data/PR-102_v3.1.fasta')
-    vcf_reader = GroupedVariant.from_vcf(variants, groups, min_samples=min_samples, min_reads=min_reads, min_geno_qual=min_geno_qual, min_map_qual=min_map_qual)
-    windower = window_generator(vcf_reader, groups, window_width=window_width, flank_len=flank)
+    vcf_reader = GroupedVariant.from_vcf(variants, groups,
+                                         min_samples=min_samples,
+                                         min_reads=min_reads,
+                                         min_geno_qual=min_geno_qual,
+                                         min_map_qual=min_map_qual)
+    windower = window_generator(vcf_reader, groups, window_width,
+                                flank_len=flank)
     for group, window in windower:
         region = GroupedRegion(window.spacer, groups)
         # Are all the variants in the spacer conserved?

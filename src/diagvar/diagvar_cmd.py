@@ -10,8 +10,8 @@ from .find_diag_region import find_diag_region
 
 # Constants
 SNP_DELIM = ('<', '>')
-PRIMER_DELIM =  ('(', ')')
-CRRNA_DELIM =  ('{', '}')
+PRIMER_DELIM = ('(', ')')
+CRRNA_DELIM = ('{', '}')
 HETERO_DELIM = '/'
 UNKNOWN_CHAR = '?'
 
@@ -52,7 +52,7 @@ def _parse_command_line_args():
     )
     parser.add_argument(
         '--log', type=str,
-        help='The file to print error messages and staus updates to '
+        help='The file to print error messages and status updates to '
              '(default: print to screen via standard error)'
     )
     parser.add_argument(
@@ -129,9 +129,9 @@ def _parse_command_line_args():
         help='What type of annotations are used in the sequence output. '
              '"none": The sequence is returned is the best guess consensus '
              'sequence for the target group. '
-             '"minimal": oligos are marked and diagnositic variant is '
+             '"minimal": oligos are marked and diagnostic variant is '
              'uppercase. '
-             '"default": oligos are marked, unambigous variants are '
+             '"default": oligos are marked, unambiguous variants are '
              'uppercase, ambiguous variants are annotated with the '
              'counts for each allele. '
              '"all": oligos are marked, all variants are annotated with '
@@ -139,48 +139,58 @@ def _parse_command_line_args():
     )
     return parser.parse_args()
 
+
 def _validate_command_line_args(original_args):
     return original_args
 
-#https://stackoverflow.com/questions/22264504/using-python-with-statement-with-sys-stdout
+
+#   https://stackoverflow.com/questions/22264504/using-python-with-statement-with-sys-stdout
 @contextmanager
-def writer(file_path = None, default_stream = sys.stdout):
+def writer(file_path=None, default_stream=sys.stdout):
     file_handle = default_stream if file_path is None else open(file_path, "w")
     yield file_handle
-    if file_path != None:
+    if file_path is not None:
         file_handle.close()
+
 
 def _print_stats_header(stream, args, variant_stat_names):
     max_nchar = max([len(n) for n in variant_stat_names + args.groups])
-    header_parts = [n.ljust(max_nchar) for n in variant_stat_names + args.groups]
-    print('| '.join(header_parts), file = stream)
+    header_parts = [n.ljust(max_nchar) for n in variant_stat_names +
+                    args.groups]
+    print('| '.join(header_parts), file=stream)
 
 
-def _print_stdout_header(args, stream, primer3_col_key, sep = '\t'):
-    col_names = ["chormosome", "position", "target", *args.groups]
+def _print_stdout_header(args, stream, primer3_col_key, sep='\t'):
+    col_names = ["chromosome", "position", "target", *args.groups]
     if args.reference is not None:
         col_names += [*args.groups, "reference", "spacer"]
     if args.primer3:
         col_names += [primer3_col_key[n] for n in primer3_col_key.values()]
-    print(col_names, sep = sep, file = stream)
+    print(col_names, sep=sep, file=stream)
 
 
-def _print_log_stats(stream, variant_counts, group_counts, endline = False):
-    max_nchar = max([len(n) for n in variant_counts.keys() + group_counts.keys()])
+def _print_log_stats(stream, variant_counts, group_counts, endline=False):
+    max_nchar = max([len(n) for n in variant_counts.keys() +
+                     group_counts.keys()])
     var_info = [str(x).ljust(max_nchar) for x in variant_counts.values()]
     group_info = [str(x).ljust(max_nchar) for x in group_counts.values()]
-    print('| '.join(var_info + group_info), file = stream, end= '\n' if endline else '\r')
+    print('| '.join(var_info + group_info), file=stream,
+          end='\n' if endline else '\r')
   
   
 def _get_group_map(metadata_path, sample_col="sample_id", group_col="group"):
     """
-    Reads metadata file and returns dictionary with sample IDs as keys and group IDs as items
+    Reads metadata file and returns dictionary with sample IDs as keys and group
+    IDs as items
     """
     metadata = pandas.read_csv(metadata_path, sep='\t')
-    return dict(zip(metadata[sample_col].tolist(), metadata[group_col].tolist()))
+    return dict(zip(metadata[sample_col].tolist(),
+                    metadata[group_col].tolist()))
+
 
 def _print_result(result):
     pass
+
 
 def _command_line_entry_point():
     """What is called when this module is executed as a script."""
@@ -215,7 +225,8 @@ def _command_line_entry_point():
         'PRIMER_LEFT_0_END_STABILITY', 'PRIMER_RIGHT_0_END_STABILITY',
         'PRIMER_PAIR_0_COMPL_ANY_TH', 'PRIMER_PAIR_0_COMPL_END_TH'
     ]
-    primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n in primer3_col_names}
+    primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower()
+                       for n in primer3_col_names}
   
     with writer(args.out, sys.stdout) as output_stream, \
             writer(args.log, sys.stderr) as log_stream:
@@ -226,25 +237,23 @@ def _command_line_entry_point():
         # Process each input file
         for vcf_file in args.vcfs:
             vcf_handle = pysam.VariantFile(vcf_file)
-            for result in find_diag_region(vcf_handle,
-                                   group_map,
-                                   reference = args.reference,
-                                   primer3 = args.primer3,
-                                   min_vars = args.min_vars,
-                                   min_groups = args.min_groups,
-                                   min_samples = args.min_samples,
-                                   min_reads = args.min_reads,
-                                   min_geno_qual = args.min_geno_qual,
-                                   min_map_qual = args.min_map_qual,
-                                   min_freq = args.min_freq,
-                                   spacer_len = args.spacer_len,
-                                   snp_offset = args.snp_offset):
+            for result in find_diag_region(vcf_handle, group_map,
+                                           reference=args.reference,
+                                           primer3=args.primer3,
+                                           min_vars=args.min_vars,
+                                           min_groups=args.min_groups,
+                                           min_samples=args.min_samples,
+                                           min_reads=args.min_reads,
+                                           min_geno_qual=args.min_geno_qual,
+                                           min_map_qual=args.min_map_qual,
+                                           min_freq=args.min_freq,
+                                           spacer_len=args.spacer_len,
+                                           snp_offset=args.snp_offset):
                 _print_result(result)
         if args.out is None or args.log is not None:
             _print_stats_header(log_stream, args, variant_stat_names)
-        _print_log_stats(log_stream, variant_counts, group_counts, endline = True)
-  
-  
+        _print_log_stats(log_stream, variant_counts, group_counts, endline=True)
+
 
 if __name__ == "__main__":
     _command_line_entry_point()
