@@ -62,8 +62,8 @@ class GroupedRegion:
             Consecutive variants representing a region.
         group : str
             The group ID for the group to use.
-        reference :
-            The reference sequence use to infer the variants
+        reference : str
+            The file path to the reference sequence use to infer the variants
         upstream : deque of GroupedVariant
             The variants upstream (larger reference position) of the region of the interest
         downstream : deque of GroupedVariant
@@ -75,11 +75,12 @@ class GroupedRegion:
             upstream = deque()
         self.variants = deque(variants)
         self.group = group
+        self.reference = self._get_reference(reference)
         self.upstream = upstream
         self.downstream = downstream
 
     @classmethod
-    def sliding_window(cls, variants, groups, span, flank=100):
+    def sliding_window(cls, variants, groups, reference, span, flank=100):
         """Generate GroupedRegion objects as a sliding window along variants
 
         Parameters
@@ -88,6 +89,8 @@ class GroupedRegion:
             The variants to generate GroupedRegion objects from.
         groups : list of str
             The groups to return sliding windows for
+        reference : str
+            The file path to the reference sequence use to infer the variants
         span : int
             The number of nucleotides that the variants should span within a group
         flank : int
@@ -98,7 +101,7 @@ class GroupedRegion:
             # Move one variant to spacer and add next to upstream queue
             region.variants.append(region.upstream.popleft())
             # Move from spacer to downstream queue once spacer is too large
-            while region._span_len() > span:
+            while region.region_length() > span:
                 region.downstream.appendleft(region.variants.popleft())
 
         # Initialize sliding windows
@@ -111,12 +114,12 @@ class GroupedRegion:
                 windows[group].upstream.append(variant)
                 if index + 1 >= flank:  # Once the upstream is full
                     increment(windows[group])
-                    yield group, windows[group]
+                    yield windows[group]
         # Clear the upstream window
-        for index in range(flank_len - 1):
+        for index in range(flank - 1):
             for group in groups:
                 increment(windows[group])
-                yield group, windows[group]
+                yield windows[group]
 
 
     @staticmethod
@@ -128,16 +131,14 @@ class GroupedRegion:
                 handle = gzip.open(ref_path, "rt")
             else:
                 handle = open(ref_path)
-                reference = list(SeqIO.parse(handle, "fasta"))
-                handle.close()
-                names = [rec.id for rec in reference]
-                reference = dict(zip(names, reference))
+            reference = list(SeqIO.parse(handle, "fasta"))
+            handle.close()
+            names = [rec.id for rec in reference]
+            reference = dict(zip(names, reference))
             return reference
 
-    
-    @staticmethod
-    def region_length(variants, subset):
-        """Get the sequence length spanned by variants in a subset
+    def region_length(self):
+        """Get the maximum sequence length spanned by variants in a subset
         
         Return
         ------
@@ -146,24 +147,21 @@ class GroupedRegion:
             of the samples have variable length alleles, then a single
             length cannot be determined and None is returned.
         """
-    
-    @staticmethod
-    def _count_genotypes(variants, subset, hetero=True, unknown=True):
-        """For a sample subset, count each allele of each variant.
-        
-        Returns
-        -------
-        list of dict of int
-            For each variant, the counts of each allele named by allele
-        """
-        output = []
-        for variant in variants:
-            output.append(GroupedVariant._count_genotypes(variant,
-                                                          subset=subset,
-                                                          hetero=hetero,
-                                                          unknown=unknown))
-        return output
-    
+        # Get length of the reference spanned by these variants
+        var_poses = [x.variant.pos for x in self.variants]
+        out = max(var_poses) - min(var_poses) + 1
+
+        # Apply length changes for each variant to adjust length
+        for var in self.variants:
+            allele_lens = var.allele_lens(self.group)
+            if len(allele_lens) == 0:
+                continue
+            max_allele_len = max(allele_lens.values())
+            ref_len = len(var.variant.ref)
+            out += max_allele_len - ref_len
+
+        return out
+
     @staticmethod
     def _subset_sequence(variants, subset,
                          reference = None,
@@ -257,9 +255,10 @@ class GroupedRegion:
                           ref_seq[replace_end:]
             return ref_seq
     
-    def sequence(self, reference = None, counts = False, ):
+    def sequence(self, reference = None, counts = False):
         """Infer the sequence for each group
         """
+        pass
     
     def conserved(self, group = None, reference = None):
         """For each variant return alleles conserved in a given group
@@ -270,8 +269,7 @@ class GroupedRegion:
             Alleles for each variant when there is a conserved allele,
             otherwise None.
         """
-
-
+        pass
 
 
 def _check_variant_cluster(variants, subset):
@@ -280,22 +278,23 @@ def _check_variant_cluster(variants, subset):
     
     pass
 
-def find_diag_region(
-        variants,
-        groups,
-        nontarget = None,
-        reference = None,
-        primer3 = False,
-        min_vars = 1,
-        min_bases = 1,
-        min_groups = 1,
-        min_samples = 5,
-        min_reads = 10,
-        min_geno_qual = 40,
-        min_map_qual = 50,
-        min_freq = 0.95,
-        spacer_len = 28,
-        snp_offset = 2):
+def find_diag_region(variants,
+                     groups,
+                     nontarget = None,
+                     reference = None,
+                     primer3 = False,
+                     min_vars = 1,
+                     min_bases = 1,
+                     min_groups = 1,
+                     min_samples = 5,
+                     min_reads = 10,
+                     min_geno_qual = 40,
+                     min_map_qual = 50,
+                     min_freq = 0.95,
+                     spacer_len = 28,
+                     snp_offset = 2,
+                     offset_left = 0,
+                     offset_right = 3):
     """Find regions with diagnostic variants
     
     Return information on regions that contain variants diagnostic for a subset
@@ -313,9 +312,8 @@ def find_diag_region(
     nontarget : list of str, optional
         The sample IDs that should be distinct from those in `groups`, but
         are otherwise not of interest. `min_samples` does not apply to these.
-    reference : Bio.SeqRecord.SeqRecord or str, optional
-        A reference sequence to use or the path to a FASTA file with 
-        a single sequence. Required if Primer3 is to be used.
+    reference : str
+        The path to a FASTA file. Required if Primer3 is to be used.
     primer3 : bool, optional
         If `True`, run Primer3 on each potential cluster of diagnostic
         variants and only return results for which primers can be found
@@ -365,16 +363,17 @@ def find_diag_region(
     """
     flank = 100 # TODO: base on max amplicon size
     window_width = spacer_len - offset_right - offset_left
-    ref = GroupedRegion._get_reference('test_data/PR-102_v3.1.fasta')
     vcf_reader = GroupedVariant.from_vcf(variants, groups,
                                          min_samples=min_samples,
                                          min_reads=min_reads,
                                          min_geno_qual=min_geno_qual,
                                          min_map_qual=min_map_qual)
-    windower = window_generator(vcf_reader, groups, window_width,
-                                flank_len=flank, spacer_len=spacer_len)
-    for group, window in windower:
-        region = GroupedRegion(window.spacer, groups)
+    windower = GroupedRegion.sliding_window(vcf_reader,
+                                            groups=groups.keys(),
+                                            reference=reference,
+                                            span=window_width,
+                                            flank=flank)
+    for region in windower:
         # Are all the variants in the spacer conserved?
         if any([x is None for x in region.conserved(group)]):
             continue
@@ -389,7 +388,7 @@ def find_diag_region(
             continue
         # Can primers be designed in adjacent conserved regions?
         infer_adjacent_seq(window.upstream, max_len = max_amplicon_length)
-        run_primer3(
+        run_primer3()
     
     
                 

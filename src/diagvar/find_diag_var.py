@@ -140,6 +140,12 @@ class GroupedVariant:
                                            min_geno_qual=min_geno_qual)
 
     @classmethod
+    def from_vcf(cls, variants, **kwargs):
+        """Iterate over a variants, creating GroupedVariants objects"""
+        for var in variants:
+            yield cls(var, **kwargs)
+
+    @classmethod
     def _count_genotypes(cls, variant, subset=None, hetero=True, unknown=True,
                          min_reads=0, min_geno_qual=0):
         """For a variant return the counts of genotypes for a subset of samples.
@@ -350,6 +356,26 @@ class GroupedVariant:
                                                       min_geno_qual=
                                                       min_geno_qual)
         return output
+
+    def allele_lens(self, group):
+        """Number of nucleotides of each allele
+
+        Returns
+        -------
+        dict of int
+            The number of nucleotides for each allele, named by allele
+        """
+        alleles = self.allele_counts[group].keys()
+        out = {}
+        for allele in alleles:
+            if "/" in allele:
+                out[allele] = max([len(x) for x in allele.split("/")])
+                continue
+            if allele == "*":
+                out[allele] = 0
+                continue
+            out[allele] = len(allele)
+        return out
 
     def all_conserved(self,
                       unknown=False,

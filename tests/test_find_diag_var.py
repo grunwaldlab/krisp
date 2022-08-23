@@ -16,7 +16,8 @@ class TestGroupedVariant(unittest.TestCase):
         self.variant2 = GroupedVariant(next(self.vcf), self.groups)
         self.variant3 = GroupedVariant(next(self.vcf), self.groups)
         self.diag_var = GroupedVariant(next(islice(self.vcf, 1020, 1021)), self.groups)
-    
+        self.vcf_subset = islice(self.vcf, 10, 15)
+
     def test_init(self):
         self.assertEqual(self.diag_var.sample_counts,
                          {'NA1': 222, 'EU1': 202, 'EU2': 0, 'NA2': 18})
@@ -26,8 +27,12 @@ class TestGroupedVariant(unittest.TestCase):
                          {'NA1': 'T', 'EU1': 'C', 'EU2': None, 'NA2': 'C'})
         self.assertEqual(self.diag_var.diagnostic,
                          {'NA1': None, 'EU1': None, 'EU2': None, 'NA2': None})
-    
-        
+
+    def test_from_vcf(self):
+        gen = GroupedVariant.from_vcf(self.vcf_subset, groups=self.groups)
+        self.assertEqual(next(gen).allele_counts,
+                         {'NA1': {'T': 236}, 'EU1': {'C': 207}, 'EU2': {}, 'NA2': {'C': 22}})
+
 
 if __name__ == '__main__':
     unittest.main()
