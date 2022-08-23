@@ -260,7 +260,7 @@ class GroupedVariant:
         return output
 
     @classmethod
-    def _diagnostic(cls, variant, groups, conserved=True,
+    def _diagnostic(cls, variant, groups,
                     min_samples=5,
                     min_reads=10,
                     min_geno_qual=40):

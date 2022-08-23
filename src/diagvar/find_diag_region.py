@@ -54,16 +54,71 @@ def collapse_to_iupac(seqs):
 
 class GroupedRegion:
     
-    def __init__(self, variants, groups):
+    def __init__(self, variants, group, reference, upstream=None, downstream=None):
         """
         Parameters
         ----------
-        variants : list of 
+        variants : iterator returning GroupedVariant
+            Consecutive variants representing a region.
+        group : str
+            The group ID for the group to use.
+        reference :
+            The reference sequence use to infer the variants
+        upstream : deque of GroupedVariant
+            The variants upstream (larger reference position) of the region of the interest
+        downstream : deque of GroupedVariant
+            The variants downstream (smaller reference position) of the region of the interest
+       """
+        if downstream is None:
+            downstream = deque()
+        if upstream is None:
+            upstream = deque()
+        self.variants = deque(variants)
+        self.group = group
+        self.upstream = upstream
+        self.downstream = downstream
+
+    @classmethod
+    def sliding_window(cls, variants, groups, span, flank=100):
+        """Generate GroupedRegion objects as a sliding window along variants
+
+        Parameters
+        ----------
+        variants : iterator returning GroupedVariant
+            The variants to generate GroupedRegion objects from.
+        groups : list of str
+            The groups to return sliding windows for
+        span : int
+            The number of nucleotides that the variants should span within a group
+        flank : int
+            The number of variants to keep in the upstream and downstream queues
         """
-        #self.variants = [GroupedVariant(v, groups) for v in variants]
-        self.variants = variants
-        self.groups = groups
-    
+
+        def increment(region):
+            # Move one variant to spacer and add next to upstream queue
+            region.variants.append(region.upstream.popleft())
+            # Move from spacer to downstream queue once spacer is too large
+            while region._span_len() > span:
+                region.downstream.appendleft(region.variants.popleft())
+
+        # Initialize sliding windows
+        windows = {}
+        for group in groups:
+            windows[group] = cls(variants=[], group=group, reference=reference)
+        # Read through variants and put into windows
+        for index, variant in enumerate(variants):
+            for group in groups:
+                windows[group].upstream.append(variant)
+                if index + 1 >= flank:  # Once the upstream is full
+                    increment(windows[group])
+                    yield group, windows[group]
+        # Clear the upstream window
+        for index in range(flank_len - 1):
+            for group in groups:
+                increment(windows[group])
+                yield group, windows[group]
+
+
     @staticmethod
     def _get_reference(ref_path):
         if ref_path is None:
@@ -217,66 +272,6 @@ class GroupedRegion:
         """
 
 
-
-class var_sliding_window:
-    """Stores all the queues so that each group can have its own spacer queue"""
-    def __init__(self, subset, spacer_len, flank_len, reference = None,
-                 min_reads = 0,
-                 min_geno_qual = 0,
-                 min_samples = 0):
-        self.subset = subset
-        self.spacer_len = spacer_len
-        self.flank_len = flank_len
-        self.upstream = deque()
-        self.downstream = deque(maxlen=flank_len)
-        self.spacer = deque()
-        self.min_reads = min_reads
-        self.min_geno_qual = min_geno_qual
-        self.min_samples = min_samples
-        self.reference = reference
-    
-    def increment(self):
-        # Move one variant to spacer and add next to upstream queue
-        self.spacer.append(self.upstream.popleft())
-        # Move from spacer to downstream queue once spacer is too large
-        while self._spacer_span() > self.spacer_len:
-            self.downstream.appendleft(self.spacer.popleft())
-    
-    # def is_primed(self):
-        # return len(self.upstream) >= self.flank_len
-        
-    # def add_variant(self, variant):
-        # self.upstream.append(variant)
-        # if self.is_primed():
-            # self.increment()
-        
-    def _spacer_span(self):
-        return len(''.join(self.spacer_seq()))
-
-
-def window_generator(min_samples, min_reads, min_geno_qual, spacer_len,
-                     flank_len = 100):
-    filter_args = {"min_samples": min_samples,
-        "min_reads": min_reads,
-        "min_geno_qual": min_geno_qual}
-    # Initialize sliding windows
-    windows = {}
-    for group, subset in groups.items():
-        windows[group] = var_sliding_window(subset, spacer_len=spacer_len,
-                                            flank_len=flank, reference = ref,
-                                            **filter_args)
-    # Read through variants and put into windows
-    for index, variant in enumerate(variants):
-        for group in groups.keys():
-            windows[group].upstream.append(variant)
-            if index + 1 >= flank_len: # Once the upstream is full
-                windows[group].increment()
-                yield group, windows[group]
-    # Clear the upstream window
-    for index in range(flank_len - 1):
-        for group in groups.keys():
-            windows[group].increment()
-            yield group, windows[group]
 
 
 def _check_variant_cluster(variants, subset):
