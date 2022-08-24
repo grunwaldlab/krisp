@@ -17,13 +17,14 @@ from .find_diag_var import find_diag_var, GroupedVariant
 
 # Constants
 SNP_DELIM = ('<', '>')
-PRIMER_DELIM =  ('(', ')')
-CRRNA_DELIM =  ('{', '}')
+PRIMER_DELIM = ('(', ')')
+CRRNA_DELIM = ('{', '}')
 HETERO_DELIM = '/'
 UNKNOWN_CHAR = '?'
-iupac_key = {tuple((x for x in sorted(v))):k for k,v in
+iupac_key = {tuple((x for x in sorted(v))): k for k, v in
              IUPACData.ambiguous_dna_values.items()}
-iupac_key[(UNKNOWN_CHAR, )] = 'N'
+iupac_key[(UNKNOWN_CHAR,)] = 'N'
+
 
 def collapse_to_iupac(seqs):
     """Combine sequences into a consensus using IUPAC ambiguity codes
@@ -40,7 +41,7 @@ def collapse_to_iupac(seqs):
     """
     seq_lens = [len(x) for x in seqs]
     max_len = max(seq_lens)
-    if len(set(seq_lens)) != 1: #TODO: replace with alignment
+    if len(set(seq_lens)) != 1:  # TODO: replace with alignment
         return '-' * max_len
     output = []
     for i in range(max_len):
@@ -50,10 +51,10 @@ def collapse_to_iupac(seqs):
         else:
             output.append(iupac_key[tuple(sorted(column))])
     return "".join(output)
-    
+
 
 class GroupedRegion:
-    
+
     def __init__(self, variants, group, reference, upstream=None, downstream=None):
         """
         Parameters
@@ -121,7 +122,6 @@ class GroupedRegion:
                 increment(windows[group])
                 yield windows[group]
 
-
     @staticmethod
     def _get_reference(ref_path):
         if ref_path is None:
@@ -164,17 +164,17 @@ class GroupedRegion:
 
     @staticmethod
     def _subset_sequence(variants, subset,
-                         reference = None,
-                         counts = True,
-                         hetero = True,
-                         unknown = True,
-                         min_reads = 0,
-                         min_geno_qual = 0,
-                         min_samples = 0,
-                         consensus = False,
-                         conserved = False,
-                         wrap = '<>',
-                         sep = ','):
+                         reference=None,
+                         counts=True,
+                         hetero=True,
+                         unknown=True,
+                         min_reads=0,
+                         min_geno_qual=0,
+                         min_samples=0,
+                         consensus=False,
+                         conserved=False,
+                         wrap='<>',
+                         sep=','):
         """For a sample subset, make a sequence representation.
         Parameters
         ----------
@@ -213,11 +213,11 @@ class GroupedRegion:
                                                             min_geno_qual=
                                                             min_geno_qual)
             sample_count = GroupedVariant._subset_sample_counts(variant, subset,
-                                                      min_reads=min_reads,
-                                                      min_geno_qual=
+                                                                min_reads=min_reads,
+                                                                min_geno_qual=
                                                                 min_geno_qual)
             if len(allele_counts) == 0:
-                allele_counts = {'?':0}
+                allele_counts = {'?': 0}
             if conserved and (len(allele_counts) != 1 or sample_count <
                               min_samples):
                 text = None
@@ -254,47 +254,58 @@ class GroupedRegion:
                 ref_seq = ref_seq[:replace_start] + [rend] + \
                           ref_seq[replace_end:]
             return ref_seq
-    
-    def sequence(self, reference = None, counts = False):
+
+    def sequence(self, reference=None, counts=False):
         """Infer the sequence for each group
         """
         pass
-    
-    def conserved(self, group = None, reference = None):
+
+    def conserved(self):
         """For each variant return alleles conserved in a given group
-        
+
         Returns
         -------
         list of str/None
             Alleles for each variant when there is a conserved allele,
             otherwise None.
         """
-        pass
+        return [x.conserved[self.group] for x in self.variants]
+
+    def diagnostic(self):
+        """For each variant return alleles diagnostic for the group
+
+        Returns
+        -------
+        list of str/None
+            Alleles for each variant when there is a conserved allele,
+            otherwise None.
+        """
+        return [x.diagnostic[self.group] for x in self.variants]
 
 
 def _check_variant_cluster(variants, subset):
     """Performs a series of checks to see if the cluster is diagnostic"""
-    
-    
+
     pass
+
 
 def find_diag_region(variants,
                      groups,
-                     nontarget = None,
-                     reference = None,
-                     primer3 = False,
-                     min_vars = 1,
-                     min_bases = 1,
-                     min_groups = 1,
-                     min_samples = 5,
-                     min_reads = 10,
-                     min_geno_qual = 40,
-                     min_map_qual = 50,
-                     min_freq = 0.95,
-                     spacer_len = 28,
-                     snp_offset = 2,
-                     offset_left = 0,
-                     offset_right = 3):
+                     reference=None,
+                     nontarget=None,
+                     primer3=False,
+                     min_vars=1,
+                     min_bases=1,
+                     min_groups=1,
+                     min_samples=3,
+                     min_reads=5,
+                     min_geno_qual=30,
+                     min_map_qual=50,
+                     min_freq=0.95,
+                     spacer_len=28,
+                     snp_offset=2,
+                     offset_left=0,
+                     offset_right=3):
     """Find regions with diagnostic variants
     
     Return information on regions that contain variants diagnostic for a subset
@@ -361,38 +372,75 @@ def find_diag_region(variants,
         information on regions that contain variants diagnostic for a
         subset of samples. TBD.
     """
-    flank = 100 # TODO: base on max amplicon size
+    flank = 100  # TODO: base on max amplicon size
     window_width = spacer_len - offset_right - offset_left
-    vcf_reader = GroupedVariant.from_vcf(variants, groups,
+    vcf_reader = GroupedVariant.from_vcf(variants, groups=groups,
                                          min_samples=min_samples,
                                          min_reads=min_reads,
-                                         min_geno_qual=min_geno_qual,
-                                         min_map_qual=min_map_qual)
+                                         min_geno_qual=min_geno_qual)
     windower = GroupedRegion.sliding_window(vcf_reader,
                                             groups=groups.keys(),
                                             reference=reference,
                                             span=window_width,
                                             flank=flank)
     for region in windower:
-        # Are all the variants in the spacer conserved?
-        if any([x is None for x in region.conserved(group)]):
-            continue
-        # Is there conserved sequence upstream for the 5' end?
-        nearby_vars = get_nearby_vars(window.upstream, offset_right) +\
-                      get_nearby_vars(window.downstream, offset_left)
-        if not all([v.is_group_conserved(group) for v in nearby_vars]):
-            continue
+
         # Are there enough diagnostic variants?
-        n_diag_var = sum([x is not None for x in region.diagnostic(group)])
+        n_diag_var = sum([x is not None for x in region.diagnostic()])
         if n_diag_var < min_vars:
+            print('too few diag:', region.diagnostic())
             continue
+
+        # Are all the variants in the spacer conserved?
+        if any([x is None for x in region.conserved()]):
+            print('not conserved:', region.conserved())
+            continue
+
+        # Is there conserved sequence upstream for the 5' end?
+        def is_nearby_conserved(border_var, nearby_vars, max_offset):
+            ref_diff_offset = 0 # cumulative differences between reference and variant alleles
+            for nearby_var in nearby_vars:
+                max_allele_len = max(nearby_var.allele_lens(region.group).values())
+                ref_diff_offset += max_allele_len - len(nearby_var.variant.ref)
+                var_pos_diff = abs(border_var.variant.pos - nearby_var.variant.pos)
+                if var_pos_diff + ref_diff_offset > max_offset:
+                    return True
+                if nearby_var.conserved[region.group] is None:
+                    return False
+
+        region_len = region.region_length()
+        overhang_left = spacer_len - offset_right - region_len
+        if not is_nearby_conserved(region.variants[-1], region.upstream, offset_right + 1):
+            continue
+        if not is_nearby_conserved(region.variants[0], region.downstream, overhang_left + 1):
+            continue
+
         # Can primers be designed in adjacent conserved regions?
-        infer_adjacent_seq(window.upstream, max_len = max_amplicon_length)
-        run_primer3()
-    
-    
-                
-            
-            
-        
-     
+        def get_nearby_conserved(border_var, nearby_vars, max_offset):
+            ref_diff_offset = 0 # cumulative differences between reference and variant alleles
+            out = []
+            for nearby_var in nearby_vars:
+                max_allele_len = max(nearby_var.allele_lens(region.group).values())
+                ref_diff_offset += max_allele_len - len(nearby_var.variant.ref)
+                var_pos_diff = abs(border_var.variant.pos - nearby_var.variant.pos)
+                if nearby_var.conserved[region.group] is None:
+                    break
+                else:
+                    out.append(nearby_var)
+                if var_pos_diff + ref_diff_offset > max_offset:
+                    break
+            return out
+
+        up_cons_vars = get_nearby_conserved(border_var=region.variants[-1],
+                                            nearby_vars=region.upstream,
+                                            max_offset=max_amplicon_len)
+        dn_cons_vars = get_nearby_conserved(border_var=region.variants[0],
+                                            nearby_vars=region.downstream,
+                                            max_offset=max_amplicon_len)
+        cons_vars = dn_cons_vars + region.variants + up_cons_vars
+        # TODO use cons_vars to make template for primer3
+
+        # infer_adjacent_seq(window.upstream, max_len = max_amplicon_length)
+        # run_primer3()
+
+        print(region)

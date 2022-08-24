@@ -24,11 +24,17 @@ class TestGroupedRegion(unittest.TestCase):
         x = GroupedRegion(GroupedVariant.from_vcf(self.vcf_subset, groups=self.groups), group="NA1", reference=self.ref)
         print(x.region_length())
 
-    def test_sliding_window(self):
-        windower = GroupedRegion.sliding_window(GroupedVariant.from_vcf(self.vcf, groups=self.groups),
-                                                groups=self.groups.keys(),
-                                                reference=self.ref,
-                                                span=30)
-        for x in windower:
-            print(x.group, x.region_length())
-            print(len(x.variants))
+    # def test_sliding_window(self):
+    #     windower = GroupedRegion.sliding_window(GroupedVariant.from_vcf(self.vcf, groups=self.groups),
+    #                                             groups=self.groups.keys(),
+    #                                             reference=self.ref,
+    #                                             span=30)
+    #     for x in windower:
+    #         print(x.group, x.region_length())
+    #         print(len(x.variants))
+
+    def test_find_diag_region(self):
+        find_diag_region(self.vcf,
+                         groups=self.groups,
+                         reference=self.ref)
+
