@@ -377,6 +377,13 @@ class GroupedVariant:
             out[allele] = len(allele)
         return out
 
+    def max_allele_len(self, group):
+        """Maximum length of an allele for a given group"""
+        if len(self.allele_counts[group]) == 0:
+            return len(self.variant.ref)
+        else:
+            return max(self.allele_lens(group).values())
+
     def all_conserved(self,
                       unknown=False,
                       min_samples=5,
