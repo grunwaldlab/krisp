@@ -21,10 +21,11 @@ HETERO_DELIM = '/'
 UNKNOWN_CHAR = '?'
 
 
-def _read_group_data(metadata_path, sample_col="sample_id", group_col="group"):
+def _parse_group_data(metadata_path, groups=None, sample_col="sample_id", group_col="group"):
     """Reads metadata file and returns dictionary with group IDs as keys and
     lists of sample names as items
     """
+    # Read samples in each group
     metadata = pandas.read_csv(metadata_path, sep='\t')
     output = {}
     for index, row in metadata.iterrows():
@@ -34,6 +35,9 @@ def _read_group_data(metadata_path, sample_col="sample_id", group_col="group"):
             output[group].append(sample)
         else:
             output[group] = [sample]
+    # Subset to just groups of interest
+    if groups is not None:
+        output = {g: v for g, v in output.items() if g in groups}
     return output
 
 
@@ -124,6 +128,7 @@ class GroupedVariant:
 
         # Store counts of each allele for each group
         self.allele_counts = self._allele_counts(variant, groups,
+                                                 hetero=False,
                                                  min_reads=min_reads,
                                                  min_geno_qual=min_geno_qual)
 

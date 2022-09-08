@@ -6,6 +6,7 @@ import copy
 import primer3
 import pysam
 import re
+import itertools
 from collections import deque
 from Bio import SeqIO
 from Bio import Seq
@@ -13,7 +14,8 @@ from Bio.Data import IUPACData
 from contextlib import contextmanager
 from collections import Counter
 
-from .find_diag_var import find_diag_var, GroupedVariant
+from .find_diag_var import find_diag_var, GroupedVariant, _parse_group_data
+from .print_align import render_variant
 
 # Constants
 SNP_DELIM = ('<', '>')
@@ -24,7 +26,20 @@ UNKNOWN_CHAR = '?'
 iupac_key = {tuple((x for x in sorted(v))): k for k, v in
              IUPACData.ambiguous_dna_values.items()}
 iupac_key[(UNKNOWN_CHAR,)] = 'N'
-
+primer3_col_names = [
+    'PRIMER_PAIR_0_PRODUCT_SIZE',
+    'PRIMER_PAIR_0_PENALTY',
+    'PRIMER_LEFT_0_SEQUENCE', 'PRIMER_RIGHT_0_SEQUENCE', 'PRIMER_INTERNAL_0_SEQUENCE',
+    'PRIMER_LEFT_0_PENALTY', 'PRIMER_RIGHT_0_PENALTY', 'PRIMER_INTERNAL_0_PENALTY',
+    'PRIMER_LEFT_0_TM', 'PRIMER_RIGHT_0_TM', 'PRIMER_INTERNAL_0_TM',
+    'PRIMER_LEFT_0_GC_PERCENT', 'PRIMER_RIGHT_0_GC_PERCENT', 'PRIMER_INTERNAL_0_GC_PERCENT',
+    'PRIMER_LEFT_0_SELF_ANY_TH', 'PRIMER_RIGHT_0_SELF_ANY_TH', 'PRIMER_INTERNAL_0_SELF_ANY_TH',
+    'PRIMER_LEFT_0_SELF_END_TH', 'PRIMER_RIGHT_0_SELF_END_TH', 'PRIMER_INTERNAL_0_SELF_END_TH',
+    'PRIMER_LEFT_0_HAIRPIN_TH', 'PRIMER_RIGHT_0_HAIRPIN_TH', 'PRIMER_INTERNAL_0_HAIRPIN_TH',
+    'PRIMER_LEFT_0_END_STABILITY', 'PRIMER_RIGHT_0_END_STABILITY',
+    'PRIMER_PAIR_0_COMPL_ANY_TH', 'PRIMER_PAIR_0_COMPL_END_TH',
+]
+primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n in primer3_col_names}
 
 def collapse_to_iupac(seqs):
     """Combine sequences into a consensus using IUPAC ambiguity codes
@@ -258,8 +273,6 @@ class GroupedRegion:
     def sequence(self, reference, start, end, group=None, var_upper=True):
         """Infer the sequence for the current group based on the reference sequence and variants
         """
-        if group is None:
-            group = self.group
         # Find variants within target region
         all_vars = self.downstream + self.variants + self.upstream
         vars_in_range = [x for x in all_vars if start <= x.variant.pos <= end]
@@ -276,7 +289,14 @@ class GroupedRegion:
         for var in vars_in_range:
             replace_start = var.variant.pos - start
             replace_end = replace_start + len(var.variant.ref)
-            consensus = collapse_to_iupac(var.allele_counts[group].keys())
+            if group is None:
+                consensus = var.variant.ref
+            else:
+                alleles = var.allele_counts[group].keys()
+                if len(alleles) == 0:  # If no data for this position, use N of equal length to reference
+                    consensus = "N" * var.variant.rlen
+                else:
+                    consensus = collapse_to_iupac(alleles)
             if var_upper:
                 consensus = consensus.upper()
             ref_seq = ref_seq[:replace_start] + [consensus] + ref_seq[replace_end:]
@@ -303,6 +323,21 @@ class GroupedRegion:
             otherwise None.
         """
         return [x.diagnostic[self.group] for x in self.variants]
+
+    def ref_pos_from_group_offset(self, ref_pos, offset):
+        """Get ref index offset by an amount of group-specific sequence"""
+        ref_diff_offset = 0
+        for v in itertools.chain(reversed(self.downstream), self.variants, self.upstream):
+            var_pos_diff = v.variant.pos - ref_pos
+            var_group_offset = var_pos_diff + ref_diff_offset
+            if var_group_offset >= offset:
+                break
+            if var_pos_diff >= 0:
+                group_allele_len = v.max_allele_len(self.group)
+                ref_allele_len = len(v.variant.ref)
+                ref_diff_offset += group_allele_len - ref_allele_len
+        return ref_pos + offset - ref_diff_offset
+
 
 
 def _check_variant_cluster(variants, subset):
@@ -357,27 +392,31 @@ def parse_primer3_settings(file_path):
     return options
 
 
-def run_primer3(template, target_start, target_end, options=None):
+def run_primer3(template, crrna_seq, options=None):
     if options is None:
         global_options = {
+            'PRIMER_TASK': 'generic',
+            'PRIMER_PICK_LEFT_PRIMER': 1, # 1 == True
+            'PRIMER_PICK_INTERNAL_OLIGO': 1,
+            'PRIMER_PICK_RIGHT_PRIMER': 1,
             'PRIMER_LIBERAL_BASE': 1,
             'PRIMER_OPT_SIZE': 30,
             'PRIMER_MIN_SIZE': 25,
             'PRIMER_MAX_SIZE': 35,
             'PRIMER_OPT_TM': 60.5,
-            'PRIMER_MIN_TM': 54.0,
-            'PRIMER_MAX_TM': 67.0,
+            'PRIMER_MIN_TM': 53.0,
+            'PRIMER_MAX_TM': 68.0,
             'PRIMER_MIN_GC': 30.0,
-            'PRIMER_MAX_GC': 50.0,  # less than 50% idealy
+            'PRIMER_MAX_GC': 70.0,  # less than 50% idealy
             'PRIMER_MAX_POLY_X': 3,
             'PRIMER_MAX_NS_ACCEPTED': 0,
             'PRIMER_THERMODYNAMIC_OLIGO_ALIGNMENT': 1,
-            'PRIMER_MAX_SELF_ANY_TH': 30,  # describes the tendency of a primer to bind to itself
-            'PRIMER_MAX_SELF_END_TH': 30,  # 3' binding to itself (primer dimers)
-            'PRIMER_PAIR_MAX_COMPL_ANY_TH': 30,  # the tendency of the left primer to bind to the right primer
-            'PRIMER_PAIR_MAX_COMPL_END_TH': 30,  # primer heterodimers
-            'PRIMER_MAX_HAIRPIN_TH': 30,  # hairpins
-            'PRIMER_PRODUCT_SIZE_RANGE': [[80, 140]]
+            'PRIMER_MAX_SELF_ANY_TH': 40,  # describes the tendency of a primer to bind to itself
+            'PRIMER_MAX_SELF_END_TH': 40,  # 3' binding to itself (primer dimers)
+            'PRIMER_PAIR_MAX_COMPL_ANY_TH': 40,  # the tendency of the left primer to bind to the right primer
+            'PRIMER_PAIR_MAX_COMPL_END_TH': 40,  # primer heterodimers
+            'PRIMER_MAX_HAIRPIN_TH': 40,  # hairpins
+            'PRIMER_PRODUCT_SIZE_RANGE': [[70, 150]],
         }
     else:
         global_options = parse_primer3_settings(options)
@@ -385,27 +424,31 @@ def run_primer3(template, target_start, target_end, options=None):
     p3_output = primer3.bindings.designPrimers(
         {
             'SEQUENCE_TEMPLATE': "".join(template),
-            'SEQUENCE_TARGET': [target_start, target_end - target_start + 1]
+            'SEQUENCE_INTERNAL_OLIGO': "".join(crrna_seq),
+            # 'SEQUENCE_TARGET': [target_start, target_end - target_start + 1]
         },
         global_options
     )
     return p3_output
 
 
-def consv_ref_border_pos(group, border_var, nearby_vars, max_offset):
-    """Find the maximum size of adjacent conserved reference sequence"""
-    ref_diff_offset = 0  # cumulative differences between reference and variant alleles
+def consv_border_n(group, border_var, nearby_vars, max_offset):
+    """Find the maximum size of adjacent conserved reference sequence in terms of reference and group sequence"""
+    ref_diff_offset = 0  # cumulative length differences between reference and variant alleles
+    var_pos_diff = 0
     for nearby_var in nearby_vars:
         # Check if variant is further away than the maximum offset
         var_pos_diff = abs(border_var.variant.pos - nearby_var.variant.pos)
         if var_pos_diff + ref_diff_offset >= max_offset:
-            return max_offset - ref_diff_offset
+            return {"ref": max_offset - ref_diff_offset, "group": max_offset}
         # If variant is not conserved, return pos right before variant
         if nearby_var.conserved[group] is None:
-            return var_pos_diff - len(nearby_var.variant.ref)
+            return {"ref": var_pos_diff - len(nearby_var.variant.ref) - ref_diff_offset,
+                    "group": var_pos_diff - len(nearby_var.variant.ref)}
         # Keep track of differences in allele length between the group and the reference
         max_allele_len = nearby_var.max_allele_len(group)
         ref_diff_offset += max_allele_len - len(nearby_var.variant.ref)
+    return {"ref": var_pos_diff - ref_diff_offset, "group": var_pos_diff}
 
 
 def is_nearby_conserved(group, border_var, nearby_vars, max_offset):
@@ -419,6 +462,47 @@ def is_nearby_conserved(group, border_var, nearby_vars, max_offset):
             return True
         if nearby_var.conserved[group] is None:
             return False
+
+
+class DiagosticRegion(GroupedRegion):
+    """The class for reporting diagnostic regions."""
+
+    def __init__(self,  variants, group, reference, upstream, downstream, p3, template, temp_range):
+        super().__init__(variants, group, reference, upstream, downstream)
+        self.p3 = p3
+        self.template = template
+        self.temp_range = temp_range
+
+    @staticmethod
+    def from_grouped_region(region, p3, template, temp_range):
+        return DiagosticRegion(variants=region.variants,
+                        group=region.group,
+                        reference=region.reference,
+                        upstream=region.upstream,
+                        downstream=region.downstream,
+                        p3=p3,
+                        template=template,
+                        temp_range=temp_range)
+
+    def left_range(self):
+        """Start/stop reference sequence indexes of the left primer."""
+        start = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=self.p3['PRIMER_LEFT_0'][0])
+        end = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=sum(self.p3['PRIMER_LEFT_0']))
+        return [start, end]
+
+    def right_range(self):
+        """Start/stop reference sequence indexes of the right primer."""
+        start = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0],
+                                               offset=self.p3['PRIMER_RIGHT_0'][0] - self.p3['PRIMER_RIGHT_0'][1])
+        end = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0],
+                                             offset=self.p3['PRIMER_RIGHT_0'][0] + 1)
+        return [start, end]
+
+    def crrna_range(self):
+        """Start/stop reference sequence indexes of the crRNA."""
+        start = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=self.p3['PRIMER_INTERNAL_0'][0])
+        end = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=sum(self.p3['PRIMER_INTERNAL_0']))
+        return [start, end]
 
 
 def find_diag_region(variants,
@@ -455,7 +539,7 @@ def find_diag_region(variants,
     nontarget : list of str, optional
         The sample IDs that should be distinct from those in `groups`, but
         are otherwise not of interest. `min_samples` does not apply to these.
-    reference : str
+    reference :
         The path to a FASTA file. Required if Primer3 is to be used.
     primer3 : bool, optional
         If `True`, run Primer3 on each potential cluster of diagnostic
@@ -506,7 +590,6 @@ def find_diag_region(variants,
     """
     flank = 100  # TODO: base on max amplicon size
     max_amplicon_len = 1000  # TODO: base on max amplicon size
-    reference = _parse_reference(reference)
     window_width = spacer_len - offset_right - offset_left
     vcf_reader = GroupedVariant.from_vcf(variants, groups=groups,
                                          min_samples=min_samples,
@@ -536,44 +619,159 @@ def find_diag_region(variants,
         if not is_nearby_conserved(region.group, region.variants[0], region.downstream, overhang_left + 1):
             continue
 
-        # Can primers be designed in adjacent conserved regions?
-        num_bp_consv_up = consv_ref_border_pos(group=region.group,
+        # Is there conserved adjacent sequence for the crRNA?
+        overhang_left = spacer_len - region_len - offset_right
+        overhang_right = offset_right
+        overhang_len_up = consv_border_n(group=region.group,
+                                               border_var=region.variants[-1],
+                                               nearby_vars=region.upstream,
+                                               max_offset=overhang_right)
+        overhang_len_dn = consv_border_n(group=region.group,
+                                               border_var=region.variants[0],
+                                               nearby_vars=region.downstream,
+                                               max_offset=overhang_left)
+        if overhang_len_up['group'] < offset_right or overhang_len_dn['group'] < overhang_left:
+            continue
+
+        # Is there enough adjacent conserved regions to design primers?
+        consv_len_up = consv_border_n(group=region.group,
                                                border_var=region.variants[-1],
                                                nearby_vars=region.upstream,
                                                max_offset=max_amplicon_len)
-        num_bp_consv_dn = consv_ref_border_pos(group=region.group,
+        consv_len_dn = consv_border_n(group=region.group,
                                                border_var=region.variants[0],
                                                nearby_vars=region.downstream,
                                                max_offset=max_amplicon_len)
-        spacer_len_diff = sum([x.max_allele_len(region.group) - len(x.variant.ref) for x in region.variants])
-        spacer_var_len = region.region_length()
-        overhang_left = spacer_len - spacer_var_len - offset_right
-        num_bp_overhang_up = consv_ref_border_pos(border_var=region.variants[-1],
-                                               nearby_vars=region.upstream,
-                                               max_offset=offset_right)
-        num_bp_overhang_dn = consv_ref_border_pos(border_var=region.variants[0],
-                                               nearby_vars=region.downstream,
-                                               max_offset=overhang_left)
-
-        # Get location of crrna and template sequence in terms of reference
-        start_crrna_ref = region.variants[0].variant.pos - num_bp_overhang_dn
-        end_crrna_ref = region.variants[-1].variant.pos + num_bp_overhang_up
-        start_tmp_ref = region.variants[0].variant.pos - num_bp_consv_dn
-        end_tmp_ref = region.variants[-1].variant.pos + num_bp_consv_up
-        print(start_crrna_ref, end_crrna_ref, start_tmp_ref, end_tmp_ref)
-
-        # Get template sequence for downstream, crrna, and upstream
-        upstream_seq = region.sequence(reference=reference, start=start_tmp_ref, end=start_crrna_ref-1)
-        downstream_seq = region.sequence(reference=reference, start=end_crrna_ref+1, end=end_tmp_ref)
-        crrna_seq = region.sequence(reference=reference, start=start_crrna_ref, end=end_crrna_ref)
-        template_seq = downstream_seq + crrna_seq + upstream_seq
+        if consv_len_up["group"] - overhang_len_up['group'] < 30:  #TODO base on primer3 primer size parameters
+            continue
+        if consv_len_dn["group"] - overhang_len_dn['group'] < 30:  #TODO base on primer3 primer size parameters
+            continue
 
         # Run primer3 on group-specific template
+        start_crrna_ref = region.variants[0].variant.pos - overhang_len_dn['ref']
+        end_crrna_ref = region.variants[-1].variant.pos + overhang_len_up['ref']
+        start_tmp_ref = region.variants[0].variant.pos - consv_len_dn['ref']
+        end_tmp_ref = region.variants[-1].variant.pos + consv_len_up['ref']
+        downstream_seq = region.sequence(reference=reference, start=start_tmp_ref, end=start_crrna_ref-1, group=region.group)
+        upstream_seq = region.sequence(reference=reference, start=end_crrna_ref+1, end=end_tmp_ref, group=region.group)
+        crrna_seq = region.sequence(reference=reference, start=start_crrna_ref, end=end_crrna_ref, group=region.group)
+        template_seq = downstream_seq + crrna_seq + upstream_seq
         start_crrna_tmp = len("".join(downstream_seq))
         end_crrna_tmp = start_crrna_tmp + len("".join(crrna_seq)) - 1
-        p3_out = run_primer3(template_seq, start_crrna_tmp, end_crrna_tmp)
+        p3_out = run_primer3(template_seq, crrna_seq=crrna_seq)
         if p3_out['PRIMER_PAIR_NUM_RETURNED'] == 0:
             continue
 
+        # Return data for the diagnostic region
+        output = DiagosticRegion.from_grouped_region(region, p3=p3_out, template=template_seq, temp_range=[start_tmp_ref, end_tmp_ref])
+        yield output
 
-        print(crrna_seq)
+
+def parse_command_line_args():
+    parser = argparse.ArgumentParser(
+        description='Find regions where there are conserved variants for each group that are not found in other groups.')
+    parser.add_argument('metadata', type=str,
+                        help='A TSV file containing data with one row per sample. Two columns are required: `sample_id`, which contains the same sample IDs used in the VCF file, and `group`, which identifies which group each sample belongs to.')
+    parser.add_argument('vcfs', type=str, nargs="+",
+                        help='One or more VCF files containing variant data for the samples grouped by the `metadata` file.')
+    parser.add_argument('--groups', type=str, nargs="+",
+                        help='One or more groups that are to be distinguished by variants. These should match the values of the `group` column in the `metadata` file.')
+    parser.add_argument('--reference', type=str,
+                        help='The reference file used to make the `vcfs` VCF file. If supplied, the sequence of the region containing each conserved variant is returned with the output.')
+    parser.add_argument('--out', type=str,
+                        help='The output file to create. (default: print to screen)')
+    parser.add_argument('--log', type=str,
+                        help='The location to save the log file (the contents of the standard error stream). (default: print to screen)')
+    return parser.parse_args()
+
+
+def parse_vcfs(paths):
+    """Create a dict of file handles for a list of paths to VCF files"""
+    out = {}
+    for path in paths:
+        out[path] = pysam.VariantFile(path)
+    return out
+
+
+def _format_p3_output(p3_out):
+    """Reformat data for best primer pair for CSV output"""
+    return {primer3_col_key[n]: p3_out[n] for n in primer3_col_names}
+
+
+def _render_header(stream, out_sep=','):
+    print("group", "chrom", "n_diag", "fwd_start", "fwd_end", "rev_start", "rev_end", "crrna_start", "crrna_end", "seq_start", "seq_end",
+          *[primer3_col_key[n] for n in primer3_col_names],
+          "group_seq",
+          sep=out_sep, file=stream)
+
+
+@contextmanager
+def writer(file_path=None, default_stream=sys.stdout):
+    file_handle = default_stream if file_path is None else open(file_path, "w")
+    yield file_handle
+    if file_path is not None:
+        file_handle.close()
+
+
+def main():
+    # Read command line arguments
+    args = parse_command_line_args()
+
+    # Prepare input data
+    vcf_handles = parse_vcfs(args.vcfs)
+    groups = _parse_group_data(args.metadata, groups=args.groups)
+    reference = _parse_reference(args.reference)
+
+    # Prepare output
+    with writer(args.out, sys.stdout) as output_stream, writer(args.log, sys.stderr) as log_stream:
+        _render_header(output_stream)
+
+        # Process each diagnostic region in each file
+        for vcf_handle in vcf_handles.values():
+            for region in find_diag_region(vcf_handle, groups, reference=reference):
+                seqs = {g: region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=g) for g in groups.keys()}
+                ref = region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=None)
+                render_variant(seqs, ref)
+
+                fwd_range = region.left_range()
+                rev_range = region.right_range()
+                crrna_range = region.crrna_range()
+
+                group = region.group
+                chrom = region.variants[0].variant.chrom
+                n_diag = sum([x is not None for x in region.diagnostic()])
+
+                fwd_start = fwd_range[0]
+                fwd_end = fwd_range[1]
+                rev_start = rev_range[0]
+                rev_end = rev_range[1]
+                crrna_start = crrna_range[0]
+                crrna_end = crrna_range[1]
+                seq_start = region.temp_range[0]
+                seq_end = region.temp_range[1]
+
+                # import pdb; pdb.set_trace()
+
+                group_seq = ''.join(region.template)
+
+                print(group, chrom, n_diag, fwd_start, fwd_end, rev_start, rev_end,
+                      crrna_start, crrna_end, seq_start, seq_end,
+                      *_format_p3_output(region.p3).values(),
+                      group_seq,
+                      sep=',', file=output_stream)
+
+
+
+if __name__ == "__main__":
+    main()
+    # diagvar test_data/test_metadata.tsv test_data/unfilt_allscafs_n666.vcf.gz --reference 'test_data/PR-102_v3.1.fasta'
+
+# if __name__ == "__main__":
+#     vcf = pysam.VariantFile('test_data/unfilt_allscafs_n666.vcf.gz')
+#     groups = _read_group_data('test_data/test_metadata.tsv')
+#     groups = {g: v for g, v in groups.items() if g in ["NA1", "NA2", "EU1", "EU2"]}
+#     ref = 'test_data/PR-102_v3.1.fasta'
+#     find_diag_region(vcf,
+#                      groups=groups,
+#                      reference=ref)
+

@@ -1,5 +1,5 @@
 from diagvar.find_diag_var import *
-from diagvar.find_diag_var import _read_group_data, _check_variant, GroupedVariant
+from diagvar.find_diag_var import _parse_group_data, _check_variant, GroupedVariant
 import pysam
 from itertools import islice
 import unittest
@@ -10,7 +10,7 @@ class TestGroupedVariant(unittest.TestCase):
     def setUp(self):
         pysam.set_verbosity(0)
         self.vcf = pysam.VariantFile('test_data/unfilt_allscafs_n666.vcf.gz')
-        self.groups = _read_group_data('test_data/test_metadata.tsv')
+        self.groups = _parse_group_data('test_data/test_metadata.tsv')
         self.groups = {k: v for k, v in self.groups.items() if k in ['NA1','NA2', 'EU1', 'EU2']}
         self.variant1 = GroupedVariant(next(self.vcf), self.groups)
         self.variant2 = GroupedVariant(next(self.vcf), self.groups)

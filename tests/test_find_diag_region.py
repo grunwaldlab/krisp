@@ -1,5 +1,5 @@
 from diagvar.find_diag_var import *
-from diagvar.find_diag_var import _read_group_data, _check_variant, GroupedVariant
+from diagvar.find_diag_var import _parse_group_data, _check_variant, GroupedVariant
 from diagvar.find_diag_region import GroupedRegion, find_diag_region
 import pysam
 from itertools import islice
@@ -11,7 +11,7 @@ class TestGroupedRegion(unittest.TestCase):
     def setUp(self):
         pysam.set_verbosity(0)
         self.vcf = pysam.VariantFile('test_data/unfilt_allscafs_n666.vcf.gz')
-        self.groups = _read_group_data('test_data/test_metadata.tsv')
+        self.groups = _parse_group_data('test_data/test_metadata.tsv')
         self.groups = {g: v for g, v in self.groups.items() if g in ["NA1", "NA2", "EU1", "EU2"]}
         self.ref = 'test_data/PR-102_v3.1.fasta'
         self.variant1 = next(self.vcf)
