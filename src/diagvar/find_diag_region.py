@@ -126,6 +126,7 @@ class GroupedRegion:
             windows[group] = cls(variants=[], group=group, reference=reference)
         # Read through variants and put into windows
         for index, variant in enumerate(variants):
+            print(index)
             for group in groups:
                 windows[group].upstream.append(variant)
                 if index + 1 >= flank:  # Once the upstream is full
@@ -163,7 +164,7 @@ class GroupedRegion:
             length cannot be determined and None is returned.
         """
         # Get length of the reference spanned by these variants
-        var_poses = [x.variant.pos for x in self.variants]
+        var_poses = [x.variant.pos - 1 for x in self.variants]
         out = max(var_poses) - min(var_poses) + 1
 
         # Apply length changes for each variant to adjust length
@@ -254,7 +255,7 @@ class GroupedRegion:
             return rendered
         else:
             # Get reference sequence spanning variants
-            var_pos = [var.pos for var in variants]
+            var_pos = [var.pos - 1 for var in variants]
             var_chrom = {var.chrom for var in variants}
             if len(var_chrom) > 1:
                 raise ValueError('Variants cannot span multiple chromosomes')
@@ -264,7 +265,7 @@ class GroupedRegion:
             ref_seq = list(reference[chrom].seq[ref_start:ref_end])
             # Replace reference with each variant
             for var, rend in zip(variants, rendered):
-                replace_start = var.pos - ref_start
+                replace_start = var.pos - 1 - ref_start
                 replace_end = replace_start + len(var.ref)
                 ref_seq = ref_seq[:replace_start] + [rend] + \
                           ref_seq[replace_end:]
@@ -275,19 +276,19 @@ class GroupedRegion:
         """
         # Find variants within target region
         all_vars = self.downstream + self.variants + self.upstream
-        vars_in_range = [x for x in all_vars if start <= x.variant.pos <= end]
+        vars_in_range = [x for x in all_vars if start <= x.variant.pos - 1 <= end]
         # Check that variants are all on the same chormosome
         if len({x.variant.chrom for x in vars_in_range}) > 1:
             raise ValueError('Variants cannot span multiple chromosomes')
         chrom = self.variants[-1].variant.chrom
         # Insert consensus for each variant in reference sequence
-        ref_seq = reference[chrom].seq[start:end].lower()
+        ref_seq = reference[chrom].seq[start:end+1].lower()
         if var_upper:
             ref_seq = list(ref_seq.lower())
         else:
             ref_seq = list(ref_seq)
         for var in vars_in_range:
-            replace_start = var.variant.pos - start
+            replace_start = var.variant.pos - 1 - start
             replace_end = replace_start + len(var.variant.ref)
             if group is None:
                 consensus = var.variant.ref
@@ -328,7 +329,7 @@ class GroupedRegion:
         """Get ref index offset by an amount of group-specific sequence"""
         ref_diff_offset = 0
         for v in itertools.chain(reversed(self.downstream), self.variants, self.upstream):
-            var_pos_diff = v.variant.pos - ref_pos
+            var_pos_diff = v.variant.pos - 1 - ref_pos
             var_group_offset = var_pos_diff + ref_diff_offset
             if var_group_offset >= offset:
                 break
@@ -648,10 +649,10 @@ def find_diag_region(variants,
             continue
 
         # Run primer3 on group-specific template
-        start_crrna_ref = region.variants[0].variant.pos - overhang_len_dn['ref']
-        end_crrna_ref = region.variants[-1].variant.pos + overhang_len_up['ref']
-        start_tmp_ref = region.variants[0].variant.pos - consv_len_dn['ref']
-        end_tmp_ref = region.variants[-1].variant.pos + consv_len_up['ref']
+        start_crrna_ref = region.variants[0].variant.pos - 1 - overhang_len_dn['ref']
+        end_crrna_ref = region.variants[-1].variant.pos - 1 + overhang_len_up['ref']
+        start_tmp_ref = region.variants[0].variant.pos - 1 - consv_len_dn['ref']
+        end_tmp_ref = region.variants[-1].variant.pos - 1 + consv_len_up['ref']
         downstream_seq = region.sequence(reference=reference, start=start_tmp_ref, end=start_crrna_ref-1, group=region.group)
         upstream_seq = region.sequence(reference=reference, start=end_crrna_ref+1, end=end_tmp_ref, group=region.group)
         crrna_seq = region.sequence(reference=reference, start=start_crrna_ref, end=end_crrna_ref, group=region.group)
@@ -713,13 +714,15 @@ def writer(file_path=None, default_stream=sys.stdout):
         file_handle.close()
 
 
-def main():
+def run_all():
     # Read command line arguments
     args = parse_command_line_args()
 
     # Prepare input data
     vcf_handles = parse_vcfs(args.vcfs)
-    groups = _parse_group_data(args.metadata, groups=args.groups)
+    first_vcf_handle = pysam.VariantFile(args.vcfs[0])
+    first_var = next(first_vcf_handle)
+    groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
     reference = _parse_reference(args.reference)
 
     # Prepare output
@@ -741,16 +744,16 @@ def main():
                 chrom = region.variants[0].variant.chrom
                 n_diag = sum([x is not None for x in region.diagnostic()])
 
-                fwd_start = fwd_range[0]
-                fwd_end = fwd_range[1]
-                rev_start = rev_range[0]
-                rev_end = rev_range[1]
-                crrna_start = crrna_range[0]
-                crrna_end = crrna_range[1]
-                seq_start = region.temp_range[0]
-                seq_end = region.temp_range[1]
+                fwd_start = fwd_range[0] + 1  # The +1 goes from 0-based in 1-based indexing
+                fwd_end = fwd_range[1] + 1
+                rev_start = rev_range[0] + 1
+                rev_end = rev_range[1] + 1
+                crrna_start = crrna_range[0] + 1
+                crrna_end = crrna_range[1] + 1
+                seq_start = region.temp_range[0] + 1
+                seq_end = region.temp_range[1] + 1
 
-                # import pdb; pdb.set_trace()
+                import pdb; pdb.set_trace()
 
                 group_seq = ''.join(region.template)
 
@@ -760,6 +763,11 @@ def main():
                       group_seq,
                       sep=',', file=output_stream)
 
+
+
+def main():
+    import cProfile; cProfile.runctx('run_all()', globals=globals(), locals=locals())
+    # run_all()
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ HETERO_DELIM = '/'
 UNKNOWN_CHAR = '?'
 
 
-def _parse_group_data(metadata_path, groups=None, sample_col="sample_id", group_col="group"):
+def _parse_group_data(metadata_path, groups=None, sample_col="sample_id", group_col="group", possible=None):
     """Reads metadata file and returns dictionary with group IDs as keys and
     lists of sample names as items
     """
@@ -31,10 +31,11 @@ def _parse_group_data(metadata_path, groups=None, sample_col="sample_id", group_
     for index, row in metadata.iterrows():
         group = row[group_col]
         sample = row[sample_col]
-        if group in output:
-            output[group].append(sample)
-        else:
-            output[group] = [sample]
+        if possible is None or sample in possible:
+            if group in output:
+                output[group].append(sample)
+            else:
+                output[group] = [sample]
     # Subset to just groups of interest
     if groups is not None:
         output = {g: v for g, v in output.items() if g in groups}
@@ -177,10 +178,14 @@ class GroupedVariant:
         # Filter samples based on data quality
         read_counts = GroupedVariant._sample_read_counts(variant)
         geno_quals = GroupedVariant._sample_geno_qual(variant)
+        # subset = [s for s in subset
+        #           if s in variant.samples.keys()
+        #           and read_counts[s] >= min_reads
+        #           and geno_quals[s] >= min_geno_qual]
         subset = [s for s in subset
-                  if s in variant.samples.keys()
                   if read_counts[s] >= min_reads
                   and geno_quals[s] >= min_geno_qual]
+
         # Count alleles
         counts = {}
         for sample_id, data in variant.samples.items():
