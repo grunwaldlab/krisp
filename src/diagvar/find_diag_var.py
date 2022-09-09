@@ -52,7 +52,7 @@ def _check_variant(
         min_geno_qual=40,
         min_map_qual=50):
     """Check how a variant relates to a given subset of samples
-  
+
     Classifies a variant into one of the following categories:
       * Diagnostic: conserved in the subset and different in the other samples
       * Conserved: conserved in the subset
@@ -62,7 +62,7 @@ def _check_variant(
       * Low mapping: Too low mapping quality score (`min_map_qual`)
       * Few groups: The variant distinguishes too few of the groups
       (`min_groups`)
-    
+
     Parameters
     ----------
     variant : pysam.libcbcf.VariantRecord
@@ -120,6 +120,8 @@ class GroupedVariant:
         self.min_reads = min_reads
         self.min_geno_qual = min_geno_qual
 
+        # Store basic info r
+
         # Store counts of samples for each group
         #   Note: this can be different from the sum of counts in allele_counts
         #   below due to heterozygous positions
@@ -134,16 +136,10 @@ class GroupedVariant:
                                                  min_geno_qual=min_geno_qual)
 
         # Store which alleles are conserved for each group
-        self.conserved = self._conserved(variant, groups,
-                                         min_samples=min_samples,
-                                         min_reads=min_reads,
-                                         min_geno_qual=min_geno_qual)
+        self.conserved = self._conserved(min_samples=min_samples)
 
         # Store which alleles are diagnostic for each group
-        self.diagnostic = self._diagnostic(variant, groups,
-                                           min_samples=min_samples,
-                                           min_reads=min_reads,
-                                           min_geno_qual=min_geno_qual)
+        self.diagnostic = self._diagnostic(min_samples=min_samples)
 
     @classmethod
     def from_vcf(cls, variants, **kwargs):
@@ -176,15 +172,9 @@ class GroupedVariant:
             subset = variant.samples.keys()
 
         # Filter samples based on data quality
-        read_counts = GroupedVariant._sample_read_counts(variant)
-        geno_quals = GroupedVariant._sample_geno_qual(variant)
-        # subset = [s for s in subset
-        #           if s in variant.samples.keys()
-        #           and read_counts[s] >= min_reads
-        #           and geno_quals[s] >= min_geno_qual]
         subset = [s for s in subset
-                  if read_counts[s] >= min_reads
-                  and geno_quals[s] >= min_geno_qual]
+                  if variant.samples[s]['DP'] >= min_reads
+                  and variant.samples[s]['GQ'] >= min_geno_qual]
 
         # Count alleles
         counts = {}
@@ -240,14 +230,7 @@ class GroupedVariant:
                                                             min_geno_qual=min_geno_qual)
         return output
 
-    @classmethod
-    def _conserved(cls,
-                   variant,
-                   groups,
-                   unknown=False,
-                   min_samples=5,
-                   min_reads=10,
-                   min_geno_qual=40):
+    def _conserved(self, min_samples=5):
         """Check if an allele is conserved for each group
 
         Return
@@ -255,31 +238,15 @@ class GroupedVariant:
         dict of str/None
             Groups as keys, allele/None as value
         """
-        # Get allele counts for each group
-        geno_counts = cls._allele_counts(variant,
-                                         groups,
-                                         hetero=False,
-                                         unknown=unknown,
-                                         min_reads=min_reads,
-                                         min_geno_qual=min_geno_qual)
-        # Check if there is only one allele and there is enough reads
-        samp_counts = cls._sample_counts(variant,
-                                         groups,
-                                         min_reads=min_reads,
-                                         min_geno_qual=min_geno_qual)
         output = {}
-        for group, counts in geno_counts.items():
-            if len(counts) == 1 and samp_counts[group] >= min_samples:
+        for group, counts in self.allele_counts.items():
+            if len(counts) == 1 and self.sample_counts[group] >= min_samples:
                 output[group] = list(counts.keys())[0]
             else:
                 output[group] = None
         return output
 
-    @classmethod
-    def _diagnostic(cls, variant, groups,
-                    min_samples=5,
-                    min_reads=10,
-                    min_geno_qual=40):
+    def _diagnostic(self, min_samples=5):
         """
         Get conserved variants only present in each group.
         
@@ -296,65 +263,35 @@ class GroupedVariant:
             For each group, the alleles that are conserved and unique to
             that group.
         """
-# If there are not enough samples for any group, no diagnostic variants found
-        samp_counts = cls._sample_counts(variant, groups, min_reads=min_reads,
-                                         min_geno_qual=min_geno_qual)
-        if any([n < min_samples for n in samp_counts.values()]):
-            return {group: None for group in groups.keys()}
-        # Get genotypes for each group
-        geno_counts = cls._allele_counts(variant, groups, hetero=False,
-                                         unknown=False, min_reads=min_reads,
-                                         min_geno_qual=min_geno_qual)
+        # If there are not enough samples for any group, no diagnostic variants found
+        if any([n < min_samples for n in self.sample_counts.values()]):
+            return {group: None for group in self.groups.keys()}
         # Get alleles for each groups
         alleles = {}
-        for g in groups.keys():
-            alleles[g] = set(geno_counts[g].keys())
+        for g in self.groups.keys():
+            alleles[g] = set(self.allele_counts[g].keys())
             # if UNKNOWN_CHAR in alleles[g]:
             #     alleles[g].remove(UNKNOWN_CHAR)
         # Remove alleles for each group that appear in other groups
         diag = copy.deepcopy(alleles)
-        for group in groups.keys():
-            for other_group in groups.keys():
+        for group in self.groups.keys():
+            for other_group in self.groups.keys():
                 if other_group != group:
                     diag[group] -= alleles[other_group]
         # Only return values for conserved diagnostic alleles
-        for group in groups.keys():
+        for group in self.groups.keys():
             if len(alleles[group]) > 1 or len(diag[group]) == 0:
                 diag[group] = None
             else:
                 diag[group] = list(diag[group])[0]
         return diag
-    
-    @staticmethod
-    def _sample_read_counts(variant):
-        """Count the number of reads for each sample.
-        
-        Return
-        ------
-        dict of number
-            The number of reads in each sample
-        """
-        return {s.name: s['DP'] for s in variant.samples.values()}
-    
-    @staticmethod
-    def _sample_geno_qual(variant):
-        """The genotype quality score for each sample.
-        
-        Return
-        ------
-        dict of number
-            The genotype quality score in each sample
-        """
-        return {s.name: s['GQ'] for s in variant.samples.values()}
-    
+
     @staticmethod
     def _subset_sample_counts(variant, subset, min_reads=10, min_geno_qual=40):
         """Number of samples passing filters in a given subset"""
-        read_counts = GroupedVariant._sample_read_counts(variant)
-        geno_quals = GroupedVariant._sample_geno_qual(variant)
-        return(sum([read_counts[s] >= min_reads
-                    and geno_quals[s] >= min_geno_qual
-                    for s in subset if s in read_counts]))
+        return(sum([variant.samples[s]['DP'] >= min_reads
+                    and variant.samples[s]['GQ'] >= min_geno_qual
+                    for s in subset]))
 
     @classmethod
     def _sample_counts(cls, variant, groups, min_reads=10, min_geno_qual=40):
@@ -363,8 +300,7 @@ class GroupedVariant:
         for group, samples in groups.items():
             output[group] = cls._subset_sample_counts(variant, samples,
                                                       min_reads=min_reads,
-                                                      min_geno_qual=
-                                                      min_geno_qual)
+                                                      min_geno_qual= min_geno_qual)
         return output
 
     def allele_lens(self, group):

@@ -766,7 +766,7 @@ def run_all():
 
 
 def main():
-    import cProfile; cProfile.runctx('run_all()', globals=globals(), locals=locals())
+    import cProfile; cProfile.runctx('run_all()', globals=globals(), locals=locals(), sort='cumulative')
     # run_all()
 
 
