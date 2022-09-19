@@ -7,7 +7,7 @@ import primer3
 import pysam
 import re
 import itertools
-from collections import deque
+from collections import deque, defaultdict
 from Bio import SeqIO
 from Bio import Seq
 from Bio.Data import IUPACData
@@ -26,16 +26,29 @@ UNKNOWN_CHAR = '?'
 iupac_key = {tuple((x for x in sorted(v))): k for k, v in
              IUPACData.ambiguous_dna_values.items()}
 iupac_key[(UNKNOWN_CHAR,)] = 'N'
+# primer3_col_names = [
+#     'PRIMER_PAIR_0_PRODUCT_SIZE',
+#     'PRIMER_PAIR_0_PENALTY',
+#     'PRIMER_LEFT_0_SEQUENCE', 'PRIMER_RIGHT_0_SEQUENCE', 'PRIMER_INTERNAL_0_SEQUENCE',
+#     'PRIMER_LEFT_0_PENALTY', 'PRIMER_RIGHT_0_PENALTY', 'PRIMER_INTERNAL_0_PENALTY',
+#     'PRIMER_LEFT_0_TM', 'PRIMER_RIGHT_0_TM', 'PRIMER_INTERNAL_0_TM',
+#     'PRIMER_LEFT_0_GC_PERCENT', 'PRIMER_RIGHT_0_GC_PERCENT', 'PRIMER_INTERNAL_0_GC_PERCENT',
+#     'PRIMER_LEFT_0_SELF_ANY_TH', 'PRIMER_RIGHT_0_SELF_ANY_TH', 'PRIMER_INTERNAL_0_SELF_ANY_TH',
+#     'PRIMER_LEFT_0_SELF_END_TH', 'PRIMER_RIGHT_0_SELF_END_TH', 'PRIMER_INTERNAL_0_SELF_END_TH',
+#     'PRIMER_LEFT_0_HAIRPIN_TH', 'PRIMER_RIGHT_0_HAIRPIN_TH', 'PRIMER_INTERNAL_0_HAIRPIN_TH',
+#     'PRIMER_LEFT_0_END_STABILITY', 'PRIMER_RIGHT_0_END_STABILITY',
+#     'PRIMER_PAIR_0_COMPL_ANY_TH', 'PRIMER_PAIR_0_COMPL_END_TH',
+# ]
 primer3_col_names = [
     'PRIMER_PAIR_0_PRODUCT_SIZE',
     'PRIMER_PAIR_0_PENALTY',
-    'PRIMER_LEFT_0_SEQUENCE', 'PRIMER_RIGHT_0_SEQUENCE', 'PRIMER_INTERNAL_0_SEQUENCE',
-    'PRIMER_LEFT_0_PENALTY', 'PRIMER_RIGHT_0_PENALTY', 'PRIMER_INTERNAL_0_PENALTY',
-    'PRIMER_LEFT_0_TM', 'PRIMER_RIGHT_0_TM', 'PRIMER_INTERNAL_0_TM',
-    'PRIMER_LEFT_0_GC_PERCENT', 'PRIMER_RIGHT_0_GC_PERCENT', 'PRIMER_INTERNAL_0_GC_PERCENT',
-    'PRIMER_LEFT_0_SELF_ANY_TH', 'PRIMER_RIGHT_0_SELF_ANY_TH', 'PRIMER_INTERNAL_0_SELF_ANY_TH',
-    'PRIMER_LEFT_0_SELF_END_TH', 'PRIMER_RIGHT_0_SELF_END_TH', 'PRIMER_INTERNAL_0_SELF_END_TH',
-    'PRIMER_LEFT_0_HAIRPIN_TH', 'PRIMER_RIGHT_0_HAIRPIN_TH', 'PRIMER_INTERNAL_0_HAIRPIN_TH',
+    'PRIMER_LEFT_0_SEQUENCE', 'PRIMER_RIGHT_0_SEQUENCE',
+    'PRIMER_LEFT_0_PENALTY', 'PRIMER_RIGHT_0_PENALTY',
+    'PRIMER_LEFT_0_TM', 'PRIMER_RIGHT_0_TM',
+    'PRIMER_LEFT_0_GC_PERCENT', 'PRIMER_RIGHT_0_GC_PERCENT',
+    'PRIMER_LEFT_0_SELF_ANY_TH', 'PRIMER_RIGHT_0_SELF_ANY_TH',
+    'PRIMER_LEFT_0_SELF_END_TH', 'PRIMER_RIGHT_0_SELF_END_TH',
+    'PRIMER_LEFT_0_HAIRPIN_TH', 'PRIMER_RIGHT_0_HAIRPIN_TH',
     'PRIMER_LEFT_0_END_STABILITY', 'PRIMER_RIGHT_0_END_STABILITY',
     'PRIMER_PAIR_0_COMPL_ANY_TH', 'PRIMER_PAIR_0_COMPL_END_TH',
 ]
@@ -94,6 +107,7 @@ class GroupedRegion:
         self.reference = reference
         self.upstream = upstream
         self.downstream = downstream
+        self.type = 'Undetermined'
 
     @classmethod
     def sliding_window(cls, variants, groups, reference, span, flank=100):
@@ -126,17 +140,20 @@ class GroupedRegion:
             windows[group] = cls(variants=[], group=group, reference=reference)
         # Read through variants and put into windows
         for index, variant in enumerate(variants):
-            print(index)
             for group in groups:
                 windows[group].upstream.append(variant)
                 if index + 1 >= flank:  # Once the upstream is full
                     increment(windows[group])
-                    yield windows[group]
+                    if len(windows[group].variants) > 0:  # Can be 0 when a single var is larger than the span
+                        yield cls(variants=windows[group].variants, group=group, reference=reference,
+                                  upstream=windows[group].upstream, downstream=windows[group].downstream)
         # Clear the upstream window
         for index in range(flank - 1):
             for group in groups:
                 increment(windows[group])
-                yield windows[group]
+                if len(windows[group].variants) > 0:  # Can be 0 when a single var is larger than the span
+                    yield cls(variants=windows[group].variants, group=group, reference=reference,
+                              upstream=windows[group].upstream, downstream=windows[group].downstream)
 
     @staticmethod
     def _get_reference(ref_path):
@@ -163,9 +180,14 @@ class GroupedRegion:
             of the samples have variable length alleles, then a single
             length cannot be determined and None is returned.
         """
+        # Return 0 if there are no variants
+        if len(self.variants) == 0:
+            return 0
+
         # Get length of the reference spanned by these variants
-        var_poses = [x.variant.pos - 1 for x in self.variants]
-        out = max(var_poses) - min(var_poses) + 1
+        starts = [x.variant.pos - 1 for x in self.variants]
+        ends = [s + x.variant.rlen - 1 for s, x in zip(starts, self.variants)]
+        out = max(ends) - min(starts) + 1
 
         # Apply length changes for each variant to adjust length
         for var in self.variants:
@@ -287,7 +309,30 @@ class GroupedRegion:
             ref_seq = list(ref_seq.lower())
         else:
             ref_seq = list(ref_seq)
-        for var in vars_in_range:
+        # for var in vars_in_range:
+        #     replace_start = var.variant.pos - 1 - start
+        #     replace_end = replace_start + len(var.variant.ref)
+        #     if group is None:
+        #         consensus = var.variant.ref
+        #     else:
+        #         alleles = var.allele_counts[group].keys()
+        #         if len(alleles) == 0:  # If no data for this position, use N of equal length to reference
+        #             consensus = "N" * var.variant.rlen
+        #         else:
+        #             consensus = collapse_to_iupac(alleles)
+        #     if var_upper:
+        #         consensus = consensus.upper()
+        #     ref_seq = ref_seq[:replace_start] + [consensus] + ref_seq[replace_end:]
+
+        # Sort variants
+        var_starts = [v.variant.pos - 1 for v in vars_in_range]
+        var_ends = [s + v.variant.rlen - 1 for v, s in zip(vars_in_range, var_starts)]
+        var_lens = [e - s + 1 for s, e in zip(var_starts, var_ends)]
+        var_diffs = [l - v.max_allele_len(group) for v, l in zip(vars_in_range, var_lens)]
+        vars_in_range = [x for _, x in sorted(zip(var_ends, vars_in_range), key=lambda pair: pair[0])]
+        for var in reversed(vars_in_range):
+            # if max(var_diffs) > 1:
+            #     import pdb; pdb.set_trace()
             replace_start = var.variant.pos - 1 - start
             replace_end = replace_start + len(var.variant.ref)
             if group is None:
@@ -300,7 +345,7 @@ class GroupedRegion:
                     consensus = collapse_to_iupac(alleles)
             if var_upper:
                 consensus = consensus.upper()
-            ref_seq = ref_seq[:replace_start] + [consensus] + ref_seq[replace_end:]
+            ref_seq = ref_seq[:replace_start] + list(consensus) + ref_seq[replace_end:]
         return ref_seq
 
     def conserved(self):
@@ -338,13 +383,6 @@ class GroupedRegion:
                 ref_allele_len = len(v.variant.ref)
                 ref_diff_offset += group_allele_len - ref_allele_len
         return ref_pos + offset - ref_diff_offset
-
-
-
-def _check_variant_cluster(variants, subset):
-    """Performs a series of checks to see if the cluster is diagnostic"""
-
-    pass
 
 
 def _parse_reference(ref_path):
@@ -393,17 +431,18 @@ def parse_primer3_settings(file_path):
     return options
 
 
-def run_primer3(template, crrna_seq, options=None):
+def run_primer3(template, target_start, target_len, options=None):
     if options is None:
         global_options = {
             'PRIMER_TASK': 'generic',
             'PRIMER_PICK_LEFT_PRIMER': 1, # 1 == True
-            'PRIMER_PICK_INTERNAL_OLIGO': 1,
+            # 'PRIMER_PICK_INTERNAL_OLIGO': 1,
             'PRIMER_PICK_RIGHT_PRIMER': 1,
             'PRIMER_LIBERAL_BASE': 1,
             'PRIMER_OPT_SIZE': 30,
             'PRIMER_MIN_SIZE': 25,
             'PRIMER_MAX_SIZE': 35,
+            # 'PRIMER_INTERNAL_MAX_SIZE': len(crrna_seq),
             'PRIMER_OPT_TM': 60.5,
             'PRIMER_MIN_TM': 53.0,
             'PRIMER_MAX_TM': 68.0,
@@ -425,8 +464,8 @@ def run_primer3(template, crrna_seq, options=None):
     p3_output = primer3.bindings.designPrimers(
         {
             'SEQUENCE_TEMPLATE': "".join(template),
-            'SEQUENCE_INTERNAL_OLIGO': "".join(crrna_seq),
-            # 'SEQUENCE_TARGET': [target_start, target_end - target_start + 1]
+            # 'SEQUENCE_INTERNAL_OLIGO': "".join(crrna_seq),
+            'SEQUENCE_TARGET': [target_start, target_len]
         },
         global_options
     )
@@ -468,22 +507,25 @@ def is_nearby_conserved(group, border_var, nearby_vars, max_offset):
 class DiagosticRegion(GroupedRegion):
     """The class for reporting diagnostic regions."""
 
-    def __init__(self,  variants, group, reference, upstream, downstream, p3, template, temp_range):
+    def __init__(self,  variants, group, reference, upstream, downstream, p3, template, temp_range, crrna_range):
         super().__init__(variants, group, reference, upstream, downstream)
         self.p3 = p3
         self.template = template
         self.temp_range = temp_range
+        self.crrna_range = crrna_range
+        self.type = "Diagnostic"
 
     @staticmethod
-    def from_grouped_region(region, p3, template, temp_range):
+    def from_grouped_region(region, p3, template, temp_range, crrna_range):
         return DiagosticRegion(variants=region.variants,
-                        group=region.group,
-                        reference=region.reference,
-                        upstream=region.upstream,
-                        downstream=region.downstream,
-                        p3=p3,
-                        template=template,
-                        temp_range=temp_range)
+                               group=region.group,
+                               reference=region.reference,
+                               upstream=region.upstream,
+                               downstream=region.downstream,
+                               p3=p3,
+                               template=template,
+                               temp_range=temp_range,
+                               crrna_range=crrna_range)
 
     def left_range(self):
         """Start/stop reference sequence indexes of the left primer."""
@@ -499,11 +541,12 @@ class DiagosticRegion(GroupedRegion):
                                              offset=self.p3['PRIMER_RIGHT_0'][0] + 1)
         return [start, end]
 
-    def crrna_range(self):
-        """Start/stop reference sequence indexes of the crRNA."""
-        start = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=self.p3['PRIMER_INTERNAL_0'][0])
-        end = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=sum(self.p3['PRIMER_INTERNAL_0']))
-        return [start, end]
+    # def crrna_range(self):
+    #     """Start/stop reference sequence indexes of the crRNA."""
+    #     # start = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=self.p3['PRIMER_INTERNAL_0'][0])
+    #     # end = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=sum(self.p3['PRIMER_INTERNAL_0']))
+    #     # return [start, end]
+    #     return self.crrna_range
 
 
 def find_diag_region(variants,
@@ -520,6 +563,8 @@ def find_diag_region(variants,
                      min_map_qual=50,
                      min_freq=0.95,
                      spacer_len=28,
+                     min_amp_size=80,
+                     max_amp_size=300,
                      snp_offset=2,
                      offset_left=0,
                      offset_right=3):
@@ -589,8 +634,6 @@ def find_diag_region(variants,
         information on regions that contain variants diagnostic for a
         subset of samples. TBD.
     """
-    flank = 100  # TODO: base on max amplicon size
-    max_amplicon_len = 1000  # TODO: base on max amplicon size
     window_width = spacer_len - offset_right - offset_left
     vcf_reader = GroupedVariant.from_vcf(variants, groups=groups,
                                          min_samples=min_samples,
@@ -600,28 +643,34 @@ def find_diag_region(variants,
                                             groups=groups.keys(),
                                             reference=reference,
                                             span=window_width,
-                                            flank=flank)
+                                            flank=max_amp_size)
     for region in windower:
 
         # Are there enough diagnostic variants?
         n_diag_var = sum([x is not None for x in region.diagnostic()])
         if n_diag_var < min_vars:
+            region.type = 'Undiagnostic'
+            yield region
             continue
 
         # Are all the variants in the spacer conserved?
         if any([x is None for x in region.conserved()]):
+            region.type = 'Unconserved crRNA'
+            yield region
             continue
 
-        # Is there conserved sequence adjacent to the variants to fit the crRNA?
-        region_len = region.region_length()
-        overhang_left = spacer_len - offset_right - region_len
-        if not is_nearby_conserved(region.group, region.variants[-1], region.upstream, offset_right + 1):
-            continue
-        if not is_nearby_conserved(region.group, region.variants[0], region.downstream, overhang_left + 1):
-            continue
+        # # Is there conserved sequence adjacent to the variants to fit the crRNA?
+        # region_len = region.region_length()
+        # overhang_left = spacer_len - offset_right - region_len
+        # if not is_nearby_conserved(region.group, region.variants[-1], region.upstream, offset_right + 1):
+        #      region.type = 'Unconserved crRNA'
+        #      yield region
+        # if not is_nearby_conserved(region.group, region.variants[0], region.downstream, overhang_left + 1):
+        #      region.type = 'Unconserved crRNA'
+        #      yield region
 
         # Is there conserved adjacent sequence for the crRNA?
-        overhang_left = spacer_len - region_len - offset_right
+        overhang_left = spacer_len - region.region_length() - offset_right
         overhang_right = offset_right
         overhang_len_up = consv_border_n(group=region.group,
                                                border_var=region.variants[-1],
@@ -632,20 +681,26 @@ def find_diag_region(variants,
                                                nearby_vars=region.downstream,
                                                max_offset=overhang_left)
         if overhang_len_up['group'] < offset_right or overhang_len_dn['group'] < overhang_left:
+            region.type = 'Unconserved crRNA'
+            yield region
             continue
 
         # Is there enough adjacent conserved regions to design primers?
         consv_len_up = consv_border_n(group=region.group,
                                                border_var=region.variants[-1],
                                                nearby_vars=region.upstream,
-                                               max_offset=max_amplicon_len)
+                                               max_offset=max_amp_size)
         consv_len_dn = consv_border_n(group=region.group,
                                                border_var=region.variants[0],
                                                nearby_vars=region.downstream,
-                                               max_offset=max_amplicon_len)
-        if consv_len_up["group"] - overhang_len_up['group'] < 30:  #TODO base on primer3 primer size parameters
+                                               max_offset=max_amp_size)
+        if consv_len_up["group"] - overhang_len_up['group'] < 30:  #TODO base on primer3 primer size
+            region.type = 'Unconserved seq'
+            yield region
             continue
         if consv_len_dn["group"] - overhang_len_dn['group'] < 30:  #TODO base on primer3 primer size parameters
+            region.type = 'Unconserved seq'
+            yield region
             continue
 
         # Run primer3 on group-specific template
@@ -657,14 +712,21 @@ def find_diag_region(variants,
         upstream_seq = region.sequence(reference=reference, start=end_crrna_ref+1, end=end_tmp_ref, group=region.group)
         crrna_seq = region.sequence(reference=reference, start=start_crrna_ref, end=end_crrna_ref, group=region.group)
         template_seq = downstream_seq + crrna_seq + upstream_seq
-        start_crrna_tmp = len("".join(downstream_seq))
-        end_crrna_tmp = start_crrna_tmp + len("".join(crrna_seq)) - 1
-        p3_out = run_primer3(template_seq, crrna_seq=crrna_seq)
+        start_crrna_tmp = len(downstream_seq)
+        end_crrna_tmp = start_crrna_tmp + len(crrna_seq) - 1
+
+        # import pdb; pdb.set_trace()
+
+        p3_out = run_primer3(template_seq, target_start=start_crrna_tmp, target_len=len(crrna_seq))
         if p3_out['PRIMER_PAIR_NUM_RETURNED'] == 0:
+            region.type = 'No primers'
+            yield region
             continue
 
         # Return data for the diagnostic region
-        output = DiagosticRegion.from_grouped_region(region, p3=p3_out, template=template_seq, temp_range=[start_tmp_ref, end_tmp_ref])
+        region.type = 'Diagnostic'
+        output = DiagosticRegion.from_grouped_region(region, p3=p3_out, template=template_seq,
+                                                     temp_range=[start_tmp_ref, end_tmp_ref], crrna_range=[start_crrna_tmp, end_crrna_tmp])
         yield output
 
 
@@ -724,6 +786,7 @@ def run_all():
     first_var = next(first_vcf_handle)
     groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
     reference = _parse_reference(args.reference)
+    stats = defaultdict(int)
 
     # Prepare output
     with writer(args.out, sys.stdout) as output_stream, writer(args.log, sys.stderr) as log_stream:
@@ -732,47 +795,49 @@ def run_all():
         # Process each diagnostic region in each file
         for vcf_handle in vcf_handles.values():
             for region in find_diag_region(vcf_handle, groups, reference=reference):
-                seqs = {g: region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=g) for g in groups.keys()}
-                ref = region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=None)
-                render_variant(seqs, ref)
+                stats[region.type] += 1
+                print(stats)
+                if region.type == "Diagnostic":
+                    # seqs = {g: region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=g) for g in groups.keys()}
+                    # ref = region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=None)
+                    # render_variant(seqs, ref)
 
-                fwd_range = region.left_range()
-                rev_range = region.right_range()
-                crrna_range = region.crrna_range()
+                    fwd_range = region.left_range()
+                    rev_range = region.right_range()
+                    crrna_range = region.crrna_range
 
-                group = region.group
-                chrom = region.variants[0].variant.chrom
-                n_diag = sum([x is not None for x in region.diagnostic()])
+                    group = region.group
+                    chrom = region.variants[0].variant.chrom
+                    n_diag = sum([x is not None for x in region.diagnostic()])
 
-                fwd_start = fwd_range[0] + 1  # The +1 goes from 0-based in 1-based indexing
-                fwd_end = fwd_range[1] + 1
-                rev_start = rev_range[0] + 1
-                rev_end = rev_range[1] + 1
-                crrna_start = crrna_range[0] + 1
-                crrna_end = crrna_range[1] + 1
-                seq_start = region.temp_range[0] + 1
-                seq_end = region.temp_range[1] + 1
+                    fwd_start = fwd_range[0] + 1  # The +1 goes from 0-based in 1-based indexing
+                    fwd_end = fwd_range[1] + 1
+                    rev_start = rev_range[0] + 1
+                    rev_end = rev_range[1] + 1
+                    crrna_start = crrna_range[0] + 1
+                    crrna_end = crrna_range[1] + 1
+                    seq_start = region.temp_range[0] + 1
+                    seq_end = region.temp_range[1] + 1
 
-                import pdb; pdb.set_trace()
+                    # import pdb; pdb.set_trace()
 
-                group_seq = ''.join(region.template)
+                    group_seq = ''.join(region.template)
 
-                print(group, chrom, n_diag, fwd_start, fwd_end, rev_start, rev_end,
-                      crrna_start, crrna_end, seq_start, seq_end,
-                      *_format_p3_output(region.p3).values(),
-                      group_seq,
-                      sep=',', file=output_stream)
+                    print(group, chrom, n_diag, fwd_start, fwd_end, rev_start, rev_end,
+                          crrna_start, crrna_end, seq_start, seq_end,
+                          *_format_p3_output(region.p3).values(),
+                          group_seq,
+                          sep=',', file=output_stream)
 
 
 
 def main():
-    import cProfile; cProfile.runctx('run_all()', globals=globals(), locals=locals(), sort='cumulative')
-    # run_all()
+    # import cProfile; cProfile.runctx('run_all()', globals=globals(), locals=locals(), sort='cumulative')
+    run_all()
 
 
 if __name__ == "__main__":
     main()
-    # diagvar test_data/test_metadata.tsv test_data/unfilt_allscafs_n666.vcf.gz --reference 'test_data/PR-102_v3.1.fasta'
 
 # if __name__ == "__main__":
 #     vcf = pysam.VariantFile('test_data/unfilt_allscafs_n666.vcf.gz')
