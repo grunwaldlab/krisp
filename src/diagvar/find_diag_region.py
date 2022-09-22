@@ -119,7 +119,7 @@ class GroupedRegion:
             The variants to generate GroupedRegion objects from.
         groups : list of str
             The groups to return sliding windows for
-        reference : dict
+        reference : str
             The file path to the reference sequence use to infer the variants
         span : int
             The number of nucleotides that the variants should span within a group
@@ -298,17 +298,20 @@ class GroupedRegion:
         """
         # Find variants within target region
         all_vars = self.downstream + self.variants + self.upstream
-        vars_in_range = [x for x in all_vars if start <= x.variant.pos - 1 <= end]
+        var_starts = [x.variant.pos - 1 for x in all_vars]
+        var_ends = [x.variant.pos + x.variant.rlen - 2 for x in all_vars]
+        vars_in_range = [v for v, vs, ve in zip(all_vars, var_starts, var_ends) if start <= ve <= end or start <= vs <= end]
+
         # Check that variants are all on the same chormosome
         if len({x.variant.chrom for x in vars_in_range}) > 1:
             raise ValueError('Variants cannot span multiple chromosomes')
         chrom = self.variants[-1].variant.chrom
+
+        # If there are no variants in the region, return the reference
+        if len(vars_in_range) == 0:
+            return list(reference[chrom].seq[start:end+1].lower())
+
         # Insert consensus for each variant in reference sequence
-        ref_seq = reference[chrom].seq[start:end+1].lower()
-        if var_upper:
-            ref_seq = list(ref_seq.lower())
-        else:
-            ref_seq = list(ref_seq)
         # for var in vars_in_range:
         #     replace_start = var.variant.pos - 1 - start
         #     replace_end = replace_start + len(var.variant.ref)
@@ -330,10 +333,15 @@ class GroupedRegion:
         var_lens = [e - s + 1 for s, e in zip(var_starts, var_ends)]
         var_diffs = [l - v.max_allele_len(group) for v, l in zip(vars_in_range, var_lens)]
         vars_in_range = [x for _, x in sorted(zip(var_ends, vars_in_range), key=lambda pair: pair[0])]
+
+        # Adjust start and end positions of sequence to span all variants
+        seq_ref_start = min(var_starts + [start])
+        seq_ref_end = max(var_ends + [end])
+
+        # Apply variants to reference sequence in reverse order
+        out_seq = list(reference[chrom].seq[seq_ref_start:seq_ref_end+1].lower())
         for var in reversed(vars_in_range):
-            # if max(var_diffs) > 1:
-            #     import pdb; pdb.set_trace()
-            replace_start = var.variant.pos - 1 - start
+            replace_start = var.variant.pos - 1 - seq_ref_start
             replace_end = replace_start + len(var.variant.ref)
             if group is None:
                 consensus = var.variant.ref
@@ -345,8 +353,15 @@ class GroupedRegion:
                     consensus = collapse_to_iupac(alleles)
             if var_upper:
                 consensus = consensus.upper()
-            ref_seq = ref_seq[:replace_start] + list(consensus) + ref_seq[replace_end:]
-        return ref_seq
+            out_seq = out_seq[:replace_start] + list(consensus) + out_seq[replace_end:]
+
+        # Trim sequence to original start and end points
+        if seq_ref_end > end:
+            out_seq = out_seq[:len(out_seq) - (seq_ref_end - end)]
+        if seq_ref_start < start:
+            out_seq = out_seq[start - seq_ref_start:]
+
+        return out_seq
 
     def conserved(self):
         """For each variant return alleles conserved in a given group
@@ -415,7 +430,7 @@ def parse_primer3_settings(file_path):
             return x
 
     with open(file_path) as handle:
-        options = dict([l.strip().split('=') for l in handle.readlines()])
+        options = dict([tuple(l.strip().split('=')) for l in handle.readlines()])
         for opt, val in options.items():
             if ' ' in val or ';' in val:
                 val = re.split('[ ;]+', val)
