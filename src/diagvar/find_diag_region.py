@@ -293,7 +293,7 @@ class GroupedRegion:
                           ref_seq[replace_end:]
             return ref_seq
 
-    def sequence(self, reference, start, end, group=None, var_upper=True):
+    def sequence(self, reference, start, end, group=None, annotate=False):
         """Infer the sequence for the current group based on the reference sequence and variants
         """
         # Find variants within target region
@@ -346,14 +346,19 @@ class GroupedRegion:
             if group is None:
                 consensus = var.variant.ref
             else:
-                alleles = var.allele_counts[group].keys()
+                alleles = var.allele_counts[group]
                 if len(alleles) == 0:  # If no data for this position, use N of equal length to reference
                     consensus = "N" * var.variant.rlen
                 else:
-                    consensus = collapse_to_iupac(alleles)
-            if var_upper:
-                consensus = consensus.upper()
-            out_seq = out_seq[:replace_start] + list(consensus) + out_seq[replace_end:]
+                    consensus = collapse_to_iupac(alleles.keys())
+                if annotate:
+                    if var.diagnostic[group] is None:
+                        replacement = consensus.upper()
+                    else:
+                        replacement = '<' + ";".join([k+str(v) for k, v in alleles.items()]) + '>'
+                else:
+                    replacement = consensus.upper()
+            out_seq = out_seq[:replace_start] + list(replacement) + out_seq[replace_end:]
 
         # Trim sequence to original start and end points
         if seq_ref_end > end:
@@ -522,30 +527,34 @@ def is_nearby_conserved(group, border_var, nearby_vars, max_offset):
 class DiagosticRegion(GroupedRegion):
     """The class for reporting diagnostic regions."""
 
-    def __init__(self,  variants, group, reference, upstream, downstream, p3, template, temp_range, crrna_range):
+    def __init__(self,  variants, group, reference, upstream, downstream, p3, crrna_seq, downstream_seq, upstream_seq, temp_range, crrna_range):
         super().__init__(variants, group, reference, upstream, downstream)
         self.p3 = p3
-        self.template = template
+        self.downstream_seq = downstream_seq
+        self.crrna_seq = crrna_seq
+        self.upstream_seq = upstream_seq
         self.temp_range = temp_range
         self.crrna_range = crrna_range
         self.type = "Diagnostic"
 
     @staticmethod
-    def from_grouped_region(region, p3, template, temp_range, crrna_range):
+    def from_grouped_region(region, p3, crrna_seq, downstream_seq, upstream_seq, temp_range, crrna_range):
         return DiagosticRegion(variants=region.variants,
                                group=region.group,
                                reference=region.reference,
                                upstream=region.upstream,
                                downstream=region.downstream,
                                p3=p3,
-                               template=template,
+                               crrna_seq=crrna_seq,
+                               downstream_seq=downstream_seq,
+                               upstream_seq=upstream_seq,
                                temp_range=temp_range,
                                crrna_range=crrna_range)
 
     def left_range(self):
         """Start/stop reference sequence indexes of the left primer."""
         start = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=self.p3['PRIMER_LEFT_0'][0])
-        end = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=sum(self.p3['PRIMER_LEFT_0']))
+        end = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=sum(self.p3['PRIMER_LEFT_0']) - 1)
         return [start, end]
 
     def right_range(self):
@@ -582,7 +591,7 @@ def find_diag_region(variants,
                      max_amp_size=300,
                      snp_offset=2,
                      offset_left=0,
-                     offset_right=3):
+                     offset_right=2):
     """Find regions with diagnostic variants
     
     Return information on regions that contain variants diagnostic for a subset
@@ -730,8 +739,6 @@ def find_diag_region(variants,
         start_crrna_tmp = len(downstream_seq)
         end_crrna_tmp = start_crrna_tmp + len(crrna_seq) - 1
 
-        # import pdb; pdb.set_trace()
-
         p3_out = run_primer3(template_seq, target_start=start_crrna_tmp, target_len=len(crrna_seq))
         if p3_out['PRIMER_PAIR_NUM_RETURNED'] == 0:
             region.type = 'No primers'
@@ -740,8 +747,9 @@ def find_diag_region(variants,
 
         # Return data for the diagnostic region
         region.type = 'Diagnostic'
-        output = DiagosticRegion.from_grouped_region(region, p3=p3_out, template=template_seq,
-                                                     temp_range=[start_tmp_ref, end_tmp_ref], crrna_range=[start_crrna_tmp, end_crrna_tmp])
+        output = DiagosticRegion.from_grouped_region(region, p3=p3_out, crrna_seq=crrna_seq, downstream_seq=downstream_seq, upstream_seq=upstream_seq,
+                                                     temp_range=[start_tmp_ref, end_tmp_ref], crrna_range=[start_crrna_ref, end_crrna_ref])
+
         yield output
 
 
@@ -779,7 +787,6 @@ def _format_p3_output(p3_out):
 def _render_header(stream, out_sep=','):
     print("group", "chrom", "n_diag", "fwd_start", "fwd_end", "rev_start", "rev_end", "crrna_start", "crrna_end", "seq_start", "seq_end",
           *[primer3_col_key[n] for n in primer3_col_names],
-          "group_seq",
           sep=out_sep, file=stream)
 
 
@@ -789,6 +796,72 @@ def writer(file_path=None, default_stream=sys.stdout):
     yield file_handle
     if file_path is not None:
         file_handle.close()
+
+
+def _format_for_csv(region, reference):
+    fwd_range = region.left_range()
+    rev_range = region.right_range()
+    crrna_range = region.crrna_range
+    temp_range = region.temp_range
+
+    group = region.group
+    chrom = region.variants[0].variant.chrom
+    n_diag = sum([x is not None for x in region.diagnostic()])
+
+    fwd_start = fwd_range[0] + 1  # The +1 goes from 0-based in 1-based indexing
+    fwd_end = fwd_range[1] + 1
+    rev_start = rev_range[0] + 1
+    rev_end = rev_range[1] + 1
+    crrna_start = crrna_range[0] + 1
+    crrna_end = crrna_range[1] + 1
+    seq_start = region.temp_range[0] + 1
+    seq_end = region.temp_range[1] + 1
+
+    # up_seq = ''.join(region.upstream_seq)
+    # down_seq = ''.join(region.downstream_seq)
+    # crrna_seq = ''.join(region.crrna_seq)
+
+    def format_seq(start, end):
+        out = region.sequence(start=start, end=end,
+                              reference=reference, group=region.group, annotate=False)
+        return "".join(out)
+
+    seq_adj_left = format_seq(start=temp_range[0], end=fwd_range[0] - 1)
+    seq_primer_left = format_seq(start=fwd_range[0], end=fwd_range[1])
+    seq_amp_left = format_seq(start=fwd_range[1] + 1, end=crrna_range[0] - 1)
+    seq_crrna = format_seq(start=crrna_range[0], end=crrna_range[1])
+    seq_amp_right = format_seq(start=crrna_range[1] + 1, end=rev_range[0] - 1)
+    seq_primer_right = format_seq(start=rev_range[0], end=rev_range[1])
+    seq_adj_right = format_seq(start=rev_range[1] + 1, end=temp_range[1])
+
+    # Modify these values to change columns and their names:
+    output = {
+        "group": group,
+        "chrom": chrom,
+        "n_diag": n_diag,
+        "reg_from": seq_start,
+        "reg_to": seq_end,
+        "diag_from": crrna_start,
+        "diag_to": crrna_end,
+        "fwd_from": fwd_start,
+        "fwd_to": fwd_end,
+        "rev_from": rev_start,
+        "rev_to": rev_end,
+        "seq_adj_left": seq_adj_left,
+        "seq_primer_fwd": seq_primer_left,
+        "seq_inter_left": seq_amp_left,
+        "seq_diag": seq_crrna,
+        "seq_inter_right": seq_amp_right,
+        "seq_primer_rev": seq_primer_right,
+        "seq_adj_right": seq_adj_right
+    }
+    output.update(_format_p3_output(region.p3))
+
+    # if seq_start == 42133:
+    #     import pdb; pdb.set_trace()
+
+
+    return output
 
 
 def run_all():
@@ -805,9 +878,6 @@ def run_all():
 
     # Prepare output
     with writer(args.out, sys.stdout) as output_stream, writer(args.log, sys.stderr) as log_stream:
-        _render_header(output_stream)
-
-        # Process each diagnostic region in each file
         for vcf_handle in vcf_handles.values():
             for region in find_diag_region(vcf_handle, groups, reference=reference):
                 stats[region.type] += 1
@@ -817,33 +887,10 @@ def run_all():
                     # ref = region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=None)
                     # render_variant(seqs, ref)
 
-                    fwd_range = region.left_range()
-                    rev_range = region.right_range()
-                    crrna_range = region.crrna_range
-
-                    group = region.group
-                    chrom = region.variants[0].variant.chrom
-                    n_diag = sum([x is not None for x in region.diagnostic()])
-
-                    fwd_start = fwd_range[0] + 1  # The +1 goes from 0-based in 1-based indexing
-                    fwd_end = fwd_range[1] + 1
-                    rev_start = rev_range[0] + 1
-                    rev_end = rev_range[1] + 1
-                    crrna_start = crrna_range[0] + 1
-                    crrna_end = crrna_range[1] + 1
-                    seq_start = region.temp_range[0] + 1
-                    seq_end = region.temp_range[1] + 1
-
-                    # import pdb; pdb.set_trace()
-
-                    group_seq = ''.join(region.template)
-
-                    print(group, chrom, n_diag, fwd_start, fwd_end, rev_start, rev_end,
-                          crrna_start, crrna_end, seq_start, seq_end,
-                          *_format_p3_output(region.p3).values(),
-                          group_seq,
-                          sep=',', file=output_stream)
-
+                    columns = _format_for_csv(region, reference)
+                    if stats["Diagnostic"] == 1: # If first output printed
+                        print(*columns.keys(), sep=',', file=output_stream)
+                    print(*columns.values(), sep=',', file=output_stream)
 
 
 def main():
