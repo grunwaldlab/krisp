@@ -899,6 +899,8 @@ def main():
 
 
 if __name__ == "__main__":
+    # Test command:
+    # python -m diagvar.find_diag_region test_data/test_metadata.tsv test_data/unfilt_allscafs_n666.vcf.gz --groups NA1 NA2 EU1 EU2 --reference test_data/PR-102_v3.1_s0001.fasta --out test.csv
     main()
 
 # if __name__ == "__main__":
