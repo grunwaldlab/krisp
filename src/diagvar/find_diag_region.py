@@ -348,6 +348,7 @@ class GroupedRegion:
             else:
                 alleles = var.allele_counts[group]
                 if len(alleles) == 0:  # If no data for this position, use N of equal length to reference
+                    import pdb; pdb.set_trace()
                     consensus = "N" * var.variant.rlen
                 else:
                     consensus = collapse_to_iupac(alleles.keys())
@@ -357,7 +358,10 @@ class GroupedRegion:
                     else:
                         replacement = '<' + ";".join([k+str(v) for k, v in alleles.items()]) + '>'
                 else:
-                    replacement = consensus.upper()
+                    if var.diagnostic[group] is None:
+                        replacement = consensus.lower()
+                    else:
+                        replacement = consensus.upper()
             out_seq = out_seq[:replace_start] + list(replacement) + out_seq[replace_end:]
 
         # Trim sequence to original start and end points
@@ -466,7 +470,7 @@ def run_primer3(template, target_start, target_len, options=None):
             'PRIMER_OPT_TM': 60.5,
             'PRIMER_MIN_TM': 53.0,
             'PRIMER_MAX_TM': 68.0,
-            'PRIMER_MIN_GC': 30.0,
+            'PRIMER_MIN_GC': 40.0,
             'PRIMER_MAX_GC': 70.0,  # less than 50% idealy
             'PRIMER_MAX_POLY_X': 3,
             'PRIMER_MAX_NS_ACCEPTED': 0,
@@ -494,21 +498,35 @@ def run_primer3(template, target_start, target_len, options=None):
 
 def consv_border_n(group, border_var, nearby_vars, max_offset):
     """Find the maximum size of adjacent conserved reference sequence in terms of reference and group sequence"""
-    ref_diff_offset = 0  # cumulative length differences between reference and variant alleles
-    var_pos_diff = 0
+    # Initialize cumulative length differences between reference and variant alleles
+    if border_var.variant.pos < nearby_vars[0].variant.pos:
+        ref_diff_offset = border_var.max_allele_len(group) - len(border_var.variant.ref)
+    else:
+        ref_diff_offset = 0
+    # Initialize distance between reference border var and the start/end of a variant
+    ref_diff = 0
+    # Search though variants until a non-conserved variant is found
     for nearby_var in nearby_vars:
+        # Get info about reference and group
+        group_len = nearby_var.max_allele_len(group)
+        ref_len = len(nearby_var.variant.ref)
+        ref_start = nearby_var.variant.pos
+        ref_end = ref_start + ref_len - 1
+        # Get distance between reference border var and the start/end of a variant
+        if border_var.variant.pos <= ref_start:
+            ref_diff = ref_start - border_var.variant.pos
+        else:
+            ref_diff = border_var.variant.pos - ref_end
         # Check if variant is further away than the maximum offset
-        var_pos_diff = abs(border_var.variant.pos - nearby_var.variant.pos)
-        if var_pos_diff + ref_diff_offset >= max_offset:
+        if ref_diff + ref_diff_offset >= max_offset:
             return {"ref": max_offset - ref_diff_offset, "group": max_offset}
         # If variant is not conserved, return pos right before variant
         if nearby_var.conserved[group] is None:
-            return {"ref": var_pos_diff - len(nearby_var.variant.ref) - ref_diff_offset,
-                    "group": var_pos_diff - len(nearby_var.variant.ref)}
+            return {"ref": ref_diff - 1,
+                    "group": ref_diff + ref_diff_offset - 1}
         # Keep track of differences in allele length between the group and the reference
-        max_allele_len = nearby_var.max_allele_len(group)
-        ref_diff_offset += max_allele_len - len(nearby_var.variant.ref)
-    return {"ref": var_pos_diff - ref_diff_offset, "group": var_pos_diff}
+        ref_diff_offset += group_len - ref_len
+    return {"ref": ref_diff - ref_diff_offset, "group": ref_diff}
 
 
 def is_nearby_conserved(group, border_var, nearby_vars, max_offset):
@@ -560,9 +578,9 @@ class DiagosticRegion(GroupedRegion):
     def right_range(self):
         """Start/stop reference sequence indexes of the right primer."""
         start = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0],
-                                               offset=self.p3['PRIMER_RIGHT_0'][0] - self.p3['PRIMER_RIGHT_0'][1])
+                                               offset=self.p3['PRIMER_RIGHT_0'][0] - self.p3['PRIMER_RIGHT_0'][1] + 1)
         end = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0],
-                                             offset=self.p3['PRIMER_RIGHT_0'][0] + 1)
+                                             offset=self.p3['PRIMER_RIGHT_0'][0])
         return [start, end]
 
     # def crrna_range(self):
@@ -581,7 +599,7 @@ def find_diag_region(variants,
                      min_vars=1,
                      min_bases=1,
                      min_groups=1,
-                     min_samples=3,
+                     min_samples=5,
                      min_reads=5,
                      min_geno_qual=30,
                      min_map_qual=50,
@@ -671,7 +689,8 @@ def find_diag_region(variants,
     for region in windower:
 
         # Are there enough diagnostic variants?
-        n_diag_var = sum([x is not None for x in region.diagnostic()])
+        is_diag = [x is not None for x in region.diagnostic()]
+        n_diag_var = sum(is_diag)
         if n_diag_var < min_vars:
             region.type = 'Undiagnostic'
             yield region
@@ -680,6 +699,13 @@ def find_diag_region(variants,
         # Are all the variants in the spacer conserved?
         if any([x is None for x in region.conserved()]):
             region.type = 'Unconserved crRNA'
+            yield region
+            continue
+
+        # If there is only one diagnostic variants, is it on the right?
+        # NOTE: this might miss some valid regions when a conservered variant is a few bp more to the right
+        if n_diag_var == 1 and is_diag[-1] is False:
+            region.type = 'Misplaced'
             yield region
             continue
 
@@ -768,8 +794,13 @@ def parse_command_line_args():
                         help='The output file to create. (default: print to screen)')
     parser.add_argument('--log', type=str,
                         help='The location to save the log file (the contents of the standard error stream). (default: print to screen)')
+    parser.add_argument('--min_samples', type=int, default=5,
+                        help='The number of samples with acceptable data (see `--min_reads`) each group must have for a given variant. (default: %(default)s)')
+    parser.add_argument('--min_reads', type=int, default=10,
+                        help='The number of reads a variant must be represented by in a given sample for the data of that sample to be considered. This corresponds to the per-sample GATK output in the VCF encoded as "DP". (default: %(default)s)')
+    parser.add_argument('--min_geno_qual', type=int, default=40,
+                        help='The minimum genotype quality score (phred scale). This corresponds to the per-sample GATK output in the VCF encoded as "GQ". (default: %(default)s)')
     return parser.parse_args()
-
 
 def parse_vcfs(paths):
     """Create a dict of file handles for a list of paths to VCF files"""
@@ -834,6 +865,9 @@ def _format_for_csv(region, reference):
     seq_primer_right = format_seq(start=rev_range[0], end=rev_range[1])
     seq_adj_right = format_seq(start=rev_range[1] + 1, end=temp_range[1])
 
+    if seq_start == 164327:
+        import pdb; pdb.set_trace()
+
     # Modify these values to change columns and their names:
     output = {
         "group": group,
@@ -879,7 +913,8 @@ def run_all():
     # Prepare output
     with writer(args.out, sys.stdout) as output_stream, writer(args.log, sys.stderr) as log_stream:
         for vcf_handle in vcf_handles.values():
-            for region in find_diag_region(vcf_handle, groups, reference=reference):
+            for region in find_diag_region(vcf_handle, groups, reference=reference, min_samples=args.min_samples,
+                                           min_reads=args.min_reads, min_geno_qual=args.min_geno_qual):
                 stats[region.type] += 1
                 print(stats)
                 if region.type == "Diagnostic":
