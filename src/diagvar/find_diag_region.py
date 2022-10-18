@@ -1,3 +1,4 @@
+import os.path
 import sys
 import argparse
 import pandas
@@ -784,12 +785,14 @@ def parse_command_line_args():
         description='Find regions where there are conserved variants for each group that are not found in other groups.')
     parser.add_argument('metadata', type=str,
                         help='A TSV file containing data with one row per sample. Two columns are required: `sample_id`, which contains the same sample IDs used in the VCF file, and `group`, which identifies which group each sample belongs to.')
-    parser.add_argument('vcfs', type=str, nargs="+",
-                        help='One or more VCF files containing variant data for the samples grouped by the `metadata` file.')
+    parser.add_argument('vcf', type=str,
+                        help='A VCF file containing variant data for the samples grouped by the `metadata` file.')
+    parser.add_argument('--index', type=str,
+                        help='The path to an tabix index file for the VCF file. If not supplied, a file with the same name as the VCF file with .tbi/.csi appended will be searched for. If that is not found, an index file will be created.')
     parser.add_argument('--groups', type=str, nargs="+",
                         help='One or more groups that are to be distinguished by variants. These should match the values of the `group` column in the `metadata` file.')
     parser.add_argument('--reference', type=str,
-                        help='The reference file used to make the `vcfs` VCF file. If supplied, the sequence of the region containing each conserved variant is returned with the output.')
+                        help='The reference file used to make the `vcf` VCF file. If supplied, the sequence of the region containing each conserved variant is returned with the output.')
     parser.add_argument('--out', type=str,
                         help='The output file to create. (default: print to screen)')
     parser.add_argument('--log', type=str,
@@ -802,12 +805,36 @@ def parse_command_line_args():
                         help='The minimum genotype quality score (phred scale). This corresponds to the per-sample GATK output in the VCF encoded as "GQ". (default: %(default)s)')
     return parser.parse_args()
 
-def parse_vcfs(paths):
-    """Create a dict of file handles for a list of paths to VCF files"""
-    out = {}
-    for path in paths:
-        out[path] = pysam.VariantFile(path)
-    return out
+
+def read_vcf_contigs(path, index=None):
+    """Supply iterators for contigs/scaffolds/chormosomes in a VCF file.
+
+    TODO: add support for stdin
+
+    Parameters
+    ----------
+    path : str
+        The path to the VCF file
+    index : str, optional
+        The path to the index file for the VCF
+    """
+    # Get path to index file or create it
+    if index is None:
+        tbi_path = path + '.tbi'
+        csi_path = path + '.csi'
+        if os.path.isfile(tbi_path):
+            index = tbi_path
+        elif os.path.isfile(csi_path):
+            index = csi_path
+        else:
+            print('Creating index...')
+            pysam.tabix_index(path, preset='vcf', keep_original=True)
+            index = tbi_path
+    # Iterate though contigs
+    index_handle = pysam.TabixFile(filename=path, index=index)
+    vcf_handle = pysam.VariantFile(path)
+    for contig in index_handle.contigs:
+        yield vcf_handle.fetch(contig)
 
 
 def _format_p3_output(p3_out):
@@ -903,17 +930,17 @@ def run_all():
     args = parse_command_line_args()
 
     # Prepare input data
-    vcf_handles = parse_vcfs(args.vcfs)
-    first_vcf_handle = pysam.VariantFile(args.vcfs[0])
-    first_var = next(first_vcf_handle)
+    contigs = read_vcf_contigs(args.vcf)
+    vcf_handle = pysam.VariantFile(args.vcf)
+    first_var = next(vcf_handle)
     groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
     reference = _parse_reference(args.reference)
     stats = defaultdict(int)
 
     # Prepare output
     with writer(args.out, sys.stdout) as output_stream, writer(args.log, sys.stderr) as log_stream:
-        for vcf_handle in vcf_handles.values():
-            for region in find_diag_region(vcf_handle, groups, reference=reference, min_samples=args.min_samples,
+        for contig in contigs:
+            for region in find_diag_region(contig, groups, reference=reference, min_samples=args.min_samples,
                                            min_reads=args.min_reads, min_geno_qual=args.min_geno_qual):
                 stats[region.type] += 1
                 print(stats)
