@@ -8,6 +8,8 @@ import primer3
 import pysam
 import re
 import itertools
+import multiprocessing as mp
+
 from collections import deque, defaultdict
 from Bio import SeqIO
 from Bio import Seq
@@ -349,7 +351,6 @@ class GroupedRegion:
             else:
                 alleles = var.allele_counts[group]
                 if len(alleles) == 0:  # If no data for this position, use N of equal length to reference
-                    import pdb; pdb.set_trace()
                     consensus = "N" * var.variant.rlen
                 else:
                     consensus = collapse_to_iupac(alleles.keys())
@@ -803,6 +804,8 @@ def parse_command_line_args():
                         help='The number of reads a variant must be represented by in a given sample for the data of that sample to be considered. This corresponds to the per-sample GATK output in the VCF encoded as "DP". (default: %(default)s)')
     parser.add_argument('--min_geno_qual', type=int, default=40,
                         help='The minimum genotype quality score (phred scale). This corresponds to the per-sample GATK output in the VCF encoded as "GQ". (default: %(default)s)')
+    parser.add_argument('--cores', type=int, default=1,
+                        help='The number of processors to use for parallel processing. (default: %(default)s)')
     return parser.parse_args()
 
 
@@ -832,9 +835,10 @@ def read_vcf_contigs(path, index=None):
             index = tbi_path
     # Iterate though contigs
     index_handle = pysam.TabixFile(filename=path, index=index)
-    vcf_handle = pysam.VariantFile(path)
-    for contig in index_handle.contigs:
-        yield vcf_handle.fetch(contig)
+    # vcf_handle = pysam.VariantFile(path)
+    # for contig in index_handle.contigs:
+    #     yield vcf_handle.fetch(contig)
+    return index_handle.contigs
 
 
 def _format_p3_output(p3_out):
@@ -892,9 +896,6 @@ def _format_for_csv(region, reference):
     seq_primer_right = format_seq(start=rev_range[0], end=rev_range[1])
     seq_adj_right = format_seq(start=rev_range[1] + 1, end=temp_range[1])
 
-    if seq_start == 164327:
-        import pdb; pdb.set_trace()
-
     # Modify these values to change columns and their names:
     output = {
         "group": group,
@@ -918,12 +919,43 @@ def _format_for_csv(region, reference):
     }
     output.update(_format_p3_output(region.p3))
 
-    # if seq_start == 42133:
-    #     import pdb; pdb.set_trace()
-
-
     return output
 
+
+def worker(queue, vcf_path, contig, groups, reference, **kwargs):
+    # print('worker start ' + contig, flush=True)
+    vcf_handle = pysam.VariantFile(vcf_path)
+    variants = vcf_handle.fetch(contig)
+    for region in find_diag_region(variants, groups, reference, **kwargs):
+        # stats[region.type] += 1
+        # print(stats)
+
+
+        if region.type == "Diagnostic":
+            # print('worker loop ' + contig)
+            # seqs = {g: region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=g) for g in groups.keys()}
+            # ref = region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=None)
+            # render_variant(seqs, ref)
+
+            output = _format_for_csv(region, reference)
+            # print(output['chrom'])
+            queue.put(output)
+    # print('worker done ' + contig, flush=True)
+    return None
+
+
+def listener(queue, args):
+    '''listens for output on the queue and writes to a file. '''
+    header_printed = False
+    with writer(args.out, sys.stdout) as output_stream, writer(args.log, sys.stderr) as log_stream:
+        while 1:
+            output = queue.get()
+            if output == 'kill':
+                break
+            if not header_printed:
+                print(*output.keys(), sep=',', file=output_stream, flush=True)
+                header_printed = True
+            print(*output.values(), sep=',', file=output_stream, flush=True)
 
 def run_all():
     # Read command line arguments
@@ -937,22 +969,30 @@ def run_all():
     reference = _parse_reference(args.reference)
     stats = defaultdict(int)
 
-    # Prepare output
+    # Prepare for multiprocessing
+    mp.set_start_method('spawn')
+    manager = mp.Manager()
+    queue = manager.Queue()
+    pool = mp.Pool(args.cores)
+    watcher = pool.apply_async(listener, (queue, args))
+
+    # Spawn processes
+    jobs = []
     with writer(args.out, sys.stdout) as output_stream, writer(args.log, sys.stderr) as log_stream:
         for contig in contigs:
-            for region in find_diag_region(contig, groups, reference=reference, min_samples=args.min_samples,
-                                           min_reads=args.min_reads, min_geno_qual=args.min_geno_qual):
-                stats[region.type] += 1
-                print(stats)
-                if region.type == "Diagnostic":
-                    # seqs = {g: region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=g) for g in groups.keys()}
-                    # ref = region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=None)
-                    # render_variant(seqs, ref)
+            job = pool.apply_async(worker,
+                                   args=(queue, args.vcf, contig, groups, reference),
+                                   kwds={'min_samples': args.min_samples,
+                                         'min_reads': args.min_reads,
+                                         'min_geno_qual': args.min_geno_qual})
+            jobs.append(job)
 
-                    columns = _format_for_csv(region, reference)
-                    if stats["Diagnostic"] == 1: # If first output printed
-                        print(*columns.keys(), sep=',', file=output_stream)
-                    print(*columns.values(), sep=',', file=output_stream)
+    # End multiprocessing
+    for job in jobs:
+        job.wait()
+    queue.put('kill')
+    pool.close()
+    pool.join()
 
 
 def main():
