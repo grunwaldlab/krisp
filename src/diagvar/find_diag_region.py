@@ -129,7 +129,7 @@ class GroupedRegion:
         self.type = 'Undetermined'
 
     @classmethod
-    def sliding_window(cls, variants, groups, reference, span, flank=100):
+    def sliding_window(cls, variants, groups, reference, span, flank=1000):
         """Generate GroupedRegion objects as a sliding window along variants
 
         Parameters
@@ -146,12 +146,15 @@ class GroupedRegion:
             The number of variants to keep in the upstream and downstream queues
         """
 
-        def increment(region):
+        def increment(region, flank):
             # Move one variant to spacer and add next to upstream queue
             region.variants.append(region.upstream.popleft())
             # Move from spacer to downstream queue once spacer is too large
             while region.region_length() > span:
                 region.downstream.appendleft(region.variants.popleft())
+            # Clear downstream queue once it is too large
+            while len(region.downstream) > flank:
+                region.downstream.pop()
 
         # Initialize sliding windows
         windows = {}
@@ -162,14 +165,14 @@ class GroupedRegion:
             for group in groups:
                 windows[group].upstream.append(variant)
                 if index + 1 >= flank:  # Once the upstream is full
-                    increment(windows[group])
+                    increment(windows[group], flank=flank)
                     if len(windows[group].variants) > 0:  # Can be 0 when a single var is larger than the span
                         yield cls(variants=windows[group].variants, group=group, reference=reference,
                                   upstream=windows[group].upstream, downstream=windows[group].downstream)
         # Clear the upstream window
         for index in range(flank - 1):
             for group in groups:
-                increment(windows[group])
+                increment(windows[group], flank=flank)
                 if len(windows[group].variants) > 0:  # Can be 0 when a single var is larger than the span
                     yield cls(variants=windows[group].variants, group=group, reference=reference,
                               upstream=windows[group].upstream, downstream=windows[group].downstream)
@@ -967,7 +970,7 @@ class ResultWriter:
     def print_result(self, result):
         if not self.result_header_printed:
             print(*result.keys(), sep=',', file=self.output_stream, flush=True)
-            self.header_printed = True
+            self.result_header_printed = True
         print(*result.values(), sep=',', file=self.output_stream, flush=True)
 
     def print_stats_header(self):
