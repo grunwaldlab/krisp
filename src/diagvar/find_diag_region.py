@@ -9,6 +9,7 @@ import pysam
 import re
 import itertools
 import multiprocessing as mp
+import pdb # NOTE: remove for production code
 
 from collections import deque, defaultdict
 from Bio import SeqIO
@@ -56,6 +57,21 @@ primer3_col_names = [
     'PRIMER_PAIR_0_COMPL_ANY_TH', 'PRIMER_PAIR_0_COMPL_END_TH',
 ]
 primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n in primer3_col_names}
+
+
+class ForkedPdb(pdb.Pdb):
+    """A Pdb subclass that may be used
+    from a forked multiprocessing child
+
+    https://stackoverflow.com/questions/4716533/how-to-attach-debugger-to-a-python-subproccess/23654936#23654936
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
 
 def collapse_to_iupac(seqs):
     """Combine sequences into a consensus using IUPAC ambiguity codes
@@ -700,7 +716,7 @@ def find_diag_region(variants,
 
         # Are all the variants in the spacer conserved?
         if any([x is None for x in region.conserved()]):
-            region.type = 'Unconserved crRNA'
+            region.type = 'Unconserved'
             yield region
             continue
 
@@ -715,10 +731,10 @@ def find_diag_region(variants,
         # region_len = region.region_length()
         # overhang_left = spacer_len - offset_right - region_len
         # if not is_nearby_conserved(region.group, region.variants[-1], region.upstream, offset_right + 1):
-        #      region.type = 'Unconserved crRNA'
+        #      region.type = 'Unconserved'
         #      yield region
         # if not is_nearby_conserved(region.group, region.variants[0], region.downstream, overhang_left + 1):
-        #      region.type = 'Unconserved crRNA'
+        #      region.type = 'Unconserved'
         #      yield region
 
         # Is there conserved adjacent sequence for the crRNA?
@@ -733,7 +749,7 @@ def find_diag_region(variants,
                                                nearby_vars=region.downstream,
                                                max_offset=overhang_left)
         if overhang_len_up['group'] < offset_right or overhang_len_dn['group'] < overhang_left:
-            region.type = 'Unconserved crRNA'
+            region.type = 'Unconserved'
             yield region
             continue
 
@@ -747,11 +763,11 @@ def find_diag_region(variants,
                                                nearby_vars=region.downstream,
                                                max_offset=max_amp_size)
         if consv_len_up["group"] - overhang_len_up['group'] < 30:  #TODO base on primer3 primer size
-            region.type = 'Unconserved seq'
+            region.type = 'Unconserved'
             yield region
             continue
         if consv_len_dn["group"] - overhang_len_dn['group'] < 30:  #TODO base on primer3 primer size parameters
-            region.type = 'Unconserved seq'
+            region.type = 'Unconserved'
             yield region
             continue
 
@@ -853,7 +869,7 @@ def _render_header(stream, out_sep=','):
 
 
 @contextmanager
-def writer(file_path=None, default_stream=sys.stdout):
+def stream_writer(file_path=None, default_stream=sys.stdout):
     file_handle = default_stream if file_path is None else open(file_path, "w")
     yield file_handle
     if file_path is not None:
@@ -922,77 +938,123 @@ def _format_for_csv(region, reference):
     return output
 
 
-def worker(queue, vcf_path, contig, groups, reference, **kwargs):
-    # print('worker start ' + contig, flush=True)
+def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
     vcf_handle = pysam.VariantFile(vcf_path)
     variants = vcf_handle.fetch(contig)
+    stats = defaultdict(int)
     for region in find_diag_region(variants, groups, reference, **kwargs):
-        # stats[region.type] += 1
-        # print(stats)
-
-
+        stats[region.type] += 1
         if region.type == "Diagnostic":
-            # print('worker loop ' + contig)
-            # seqs = {g: region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=g) for g in groups.keys()}
-            # ref = region.sequence(reference=reference, start=region.temp_range[0], end=region.temp_range[1], group=None)
-            # render_variant(seqs, ref)
-
             output = _format_for_csv(region, reference)
-            # print(output['chrom'])
-            queue.put(output)
-    # print('worker done ' + contig, flush=True)
+            yield {'result': output, 'stats': stats}
+            stats = defaultdict(int)
     return None
 
 
-def listener(queue, args):
+class ResultWriter:
+
+    def __init__(self, output_stream, log_stream, groups):
+        self.result_header_printed = False
+        self.stat_header_printed = False
+        self.stats = defaultdict(int)
+        self.output_stream = output_stream
+        self.log_stream = log_stream
+        self.stat_names = ['Undiagnostic', 'Unconserved', 'No primers']
+        self.variant_counts = {s: 0 for s in self.stat_names}
+        self.groups = groups
+        self.group_counts = {g: 0 for g in groups}
+
+    def print_result(self, result):
+        if not self.result_header_printed:
+            print(*result.keys(), sep=',', file=self.output_stream, flush=True)
+            self.header_printed = True
+        print(*result.values(), sep=',', file=self.output_stream, flush=True)
+
+    def print_stats_header(self):
+        max_nchar = max([len(n) for n in self.stat_names + self.groups])
+        header_parts = [n.ljust(max_nchar) for n in self.stat_names + self.groups]
+        print('| '.join(header_parts), file=self.log_stream)
+
+    def print_status(self, end_line=False):
+        if not self.stat_header_printed:
+            self.print_stats_header()
+            self.stat_header_printed = True
+        max_nchar = max([len(n) for n in self.stat_names + self.groups])
+        var_info = [str(self.variant_counts[n]).ljust(max_nchar) for n in self.stat_names]
+        group_info = [str(self.group_counts[n]).ljust(max_nchar) for n in self.groups]
+        print('| '.join(var_info + group_info), file=self.log_stream, end='\n' if end_line else '\r')
+
+    def update_stats(self, output):
+        self.group_counts[output['result']['group']] += 1
+        for stat, count in output['stats'].items():
+            if stat in self.variant_counts:
+                self.variant_counts[stat] += count
+
+    def write(self, output):
+        self.print_result(output['result'])
+        self.update_stats(output)
+        self.print_status()
+
+def mp_worker(queue, vcf_path, contig, groups, reference, **kwargs):
+    for result in report_diag_region(vcf_path, contig, groups, reference, **kwargs):
+        queue.put(result)
+    return None
+
+
+def mp_listener(queue, args):
     '''listens for output on the queue and writes to a file. '''
-    header_printed = False
-    with writer(args.out, sys.stdout) as output_stream, writer(args.log, sys.stderr) as log_stream:
+    with stream_writer(args.out, sys.stdout) as output_stream, stream_writer(args.log, sys.stderr) as log_stream:
+        writer = ResultWriter(output_stream, log_stream, args.groups)
         while 1:
             output = queue.get()
-            if output == 'kill':
+            if output == "kill":
                 break
-            if not header_printed:
-                print(*output.keys(), sep=',', file=output_stream, flush=True)
-                header_printed = True
-            print(*output.values(), sep=',', file=output_stream, flush=True)
+            writer.write(output)
+
 
 def run_all():
-    # Read command line arguments
-    args = parse_command_line_args()
 
     # Prepare input data
+    args = parse_command_line_args()
     contigs = read_vcf_contigs(args.vcf)
     vcf_handle = pysam.VariantFile(args.vcf)
     first_var = next(vcf_handle)
     groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
     reference = _parse_reference(args.reference)
-    stats = defaultdict(int)
 
-    # Prepare for multiprocessing
-    mp.set_start_method('spawn')
-    manager = mp.Manager()
-    queue = manager.Queue()
-    pool = mp.Pool(args.cores)
-    watcher = pool.apply_async(listener, (queue, args))
+    if args.cores > 1:
+        # Prepare for multiprocessing
+        mp.set_start_method('spawn')
+        manager = mp.Manager()
+        queue = manager.Queue()
+        pool = mp.Pool(args.cores)
+        watcher = pool.apply_async(mp_listener, args=(queue, args))
 
-    # Spawn processes
-    jobs = []
-    with writer(args.out, sys.stdout) as output_stream, writer(args.log, sys.stderr) as log_stream:
+        # Spawn processes
+        jobs = []
         for contig in contigs:
-            job = pool.apply_async(worker,
+            job = pool.apply_async(mp_worker,
                                    args=(queue, args.vcf, contig, groups, reference),
                                    kwds={'min_samples': args.min_samples,
                                          'min_reads': args.min_reads,
                                          'min_geno_qual': args.min_geno_qual})
             jobs.append(job)
 
-    # End multiprocessing
-    for job in jobs:
-        job.wait()
-    queue.put('kill')
-    pool.close()
-    pool.join()
+        # End multiprocessing
+        for job in jobs:
+            job.wait()
+        queue.put('kill')
+        pool.close()
+        pool.join()
+    else:
+        with stream_writer(args.out, sys.stdout) as output_stream, stream_writer(args.log, sys.stderr) as log_stream:
+            writer = ResultWriter(output_stream, log_stream, args.groups)
+            for contig in contigs:
+                for result in report_diag_region(args.vcf, contig, groups, reference,
+                                                 min_samples=args.min_samples,
+                                                 min_reads=args.min_reads,
+                                                 min_geno_qual=args.min_geno_qual):
+                    writer.write(result)
 
 
 def main():
