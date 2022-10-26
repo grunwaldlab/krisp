@@ -828,7 +828,7 @@ def parse_command_line_args():
     return parser.parse_args()
 
 
-def read_vcf_contigs(path, index=None):
+def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=1000):
     """Supply iterators for contigs/scaffolds/chormosomes in a VCF file.
 
     TODO: add support for stdin
@@ -849,15 +849,20 @@ def read_vcf_contigs(path, index=None):
         elif os.path.isfile(csi_path):
             index = csi_path
         else:
-            print('Creating index...')
+            print('Creating index...') #TODO change to logging
             pysam.tabix_index(path, preset='vcf', keep_original=True)
             index = tbi_path
-    # Iterate though contigs
+    # Split contigs into chunks for processing
     index_handle = pysam.TabixFile(filename=path, index=index)
-    # vcf_handle = pysam.VariantFile(path)
-    # for contig in index_handle.contigs:
-    #     yield vcf_handle.fetch(contig)
-    return index_handle.contigs
+    output = []
+    for contig in index_handle.contigs:
+        length = len(reference[contig])
+        for start in range(0, length, chunk_size):
+            end = start + chunk_size + flank_size
+            if start > flank_size:
+                start -= flank_size
+            output.append({'contig': contig, 'start': start, 'end': end})
+    return output
 
 
 def _format_p3_output(p3_out):
@@ -943,7 +948,7 @@ def _format_for_csv(region, reference):
 
 def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
     vcf_handle = pysam.VariantFile(vcf_path)
-    variants = vcf_handle.fetch(contig)
+    variants = vcf_handle.fetch(contig['contig'], start=contig['start'], end=contig['end'])
     stats = defaultdict(int)
     for region in find_diag_region(variants, groups, reference, **kwargs):
         stats[region.type] += 1
@@ -1019,11 +1024,12 @@ def run_all():
 
     # Prepare input data
     args = parse_command_line_args()
-    contigs = read_vcf_contigs(args.vcf)
+    reference = _parse_reference(args.reference)
+    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=100000, flank_size=1000) #TODO base on amplicon size, need to add to args
     vcf_handle = pysam.VariantFile(args.vcf)
     first_var = next(vcf_handle)
     groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
-    reference = _parse_reference(args.reference)
+
 
     if args.cores > 1:
         # Prepare for multiprocessing
