@@ -1,3 +1,4 @@
+import logging
 import os.path
 import sys
 import argparse
@@ -57,6 +58,15 @@ primer3_col_names = [
     'PRIMER_PAIR_0_COMPL_ANY_TH', 'PRIMER_PAIR_0_COMPL_END_TH',
 ]
 primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n in primer3_col_names}
+
+# Set up logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+stderr_handler = logging.StreamHandler()
+stderr_handler.setLevel(logging.WARNING)
+log_formatter = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
+stderr_handler.setFormatter(log_formatter)
+logger.addHandler(stderr_handler)
 
 
 class ForkedPdb(pdb.Pdb):
@@ -801,6 +811,8 @@ def find_diag_region(variants,
 
 
 def parse_command_line_args():
+    # Parse command line arguments
+    logger.debug('Parsing command line arguments')
     parser = argparse.ArgumentParser(
         description='Find regions where there are conserved variants for each group that are not found in other groups.')
     parser.add_argument('metadata', type=str,
@@ -815,8 +827,6 @@ def parse_command_line_args():
                         help='The reference file used to make the `vcf` VCF file. If supplied, the sequence of the region containing each conserved variant is returned with the output.')
     parser.add_argument('--out', type=str,
                         help='The output file to create. (default: print to screen)')
-    parser.add_argument('--log', type=str,
-                        help='The location to save the log file (the contents of the standard error stream). (default: print to screen)')
     parser.add_argument('--min_samples', type=int, default=5,
                         help='The number of samples with acceptable data (see `--min_reads`) each group must have for a given variant. (default: %(default)s)')
     parser.add_argument('--min_reads', type=int, default=10,
@@ -825,7 +835,13 @@ def parse_command_line_args():
                         help='The minimum genotype quality score (phred scale). This corresponds to the per-sample GATK output in the VCF encoded as "GQ". (default: %(default)s)')
     parser.add_argument('--cores', type=int, default=1,
                         help='The number of processors to use for parallel processing. (default: %(default)s)')
-    return parser.parse_args()
+    parser.add_argument('--log', type=str,
+                        help='The location to save a log file containing information, warnings, and errors. (default: print to screen via stderr)')
+    parser.add_argument('--log_level', type=str,
+                        help='The minimum importance level of messages to print to the log. Possible values include DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO if the log is being saved to a file with --log, otherwise WARNING)')
+    args = parser.parse_args()
+
+    return args
 
 
 def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=1000):
@@ -961,12 +977,11 @@ def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
 
 class ResultWriter:
 
-    def __init__(self, output_stream, log_stream, groups):
+    def __init__(self, output_stream, groups):
         self.result_header_printed = False
         self.stat_header_printed = False
         self.stats = defaultdict(int)
         self.output_stream = output_stream
-        self.log_stream = log_stream
         self.stat_names = ['Undiagnostic', 'Unconserved', 'No primers']
         self.variant_counts = {s: 0 for s in self.stat_names}
         self.groups = groups
@@ -981,7 +996,7 @@ class ResultWriter:
     def print_stats_header(self):
         max_nchar = max([len(n) for n in self.stat_names + self.groups])
         header_parts = [n.ljust(max_nchar) for n in self.stat_names + self.groups]
-        print('| '.join(header_parts), file=self.log_stream)
+        print('| '.join(header_parts), file=sys.stderr)
 
     def print_status(self, end_line=False):
         if not self.stat_header_printed:
@@ -990,7 +1005,7 @@ class ResultWriter:
         max_nchar = max([len(n) for n in self.stat_names + self.groups])
         var_info = [str(self.variant_counts[n]).ljust(max_nchar) for n in self.stat_names]
         group_info = [str(self.group_counts[n]).ljust(max_nchar) for n in self.groups]
-        print('| '.join(var_info + group_info), file=self.log_stream, end='\n' if end_line else '\r')
+        print('| '.join(var_info + group_info), file=sys.stderr, end='\n' if end_line else '\r')
 
     def update_stats(self, output):
         self.group_counts[output['result']['group']] += 1
@@ -1011,8 +1026,8 @@ def mp_worker(queue, vcf_path, contig, groups, reference, **kwargs):
 
 def mp_listener(queue, args):
     '''listens for output on the queue and writes to a file. '''
-    with stream_writer(args.out, sys.stdout) as output_stream, stream_writer(args.log, sys.stderr) as log_stream:
-        writer = ResultWriter(output_stream, log_stream, args.groups)
+    with stream_writer(args.out, sys.stdout) as output_stream:
+        writer = ResultWriter(output_stream, args.groups)
         while 1:
             output = queue.get()
             if output == "kill":
@@ -1022,17 +1037,41 @@ def mp_listener(queue, args):
 
 def run_all():
 
-    # Prepare input data
+    # Parse command line arguments
     args = parse_command_line_args()
+
+    # Set up logger
+    stderr_handler.setLevel(logging.WARNING)
+    if args.log is None:
+        if args.log_level is None:
+            stderr_handler.setLevel("WARNING")
+        else:
+            stderr_handler.setLevel(args.log_level)
+    else:
+        log_file_handler = logging.FileHandler(filename=args.log, mode="w")
+        if args.log_level is None:
+            log_file_handler.setLevel("INFO")
+        else:
+            log_file_handler.setLevel(args.log_level)
+        log_file_handler.setFormatter(log_formatter)
+        logger.addHandler(log_file_handler)
+    logger.debug('Logger initialized')
+
+    # Log record of parsed parameters
+    lines = [f"    {k : <15}: {v}" for k, v in vars(args).items() if v is not None]
+    logger.info("\n".join(["Parameters used:"] + lines))
+    logger.warning('test')
+
+    # Prepare input data
     reference = _parse_reference(args.reference)
     contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=100000, flank_size=1000) #TODO base on amplicon size, need to add to args
     vcf_handle = pysam.VariantFile(args.vcf)
     first_var = next(vcf_handle)
     groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
 
-
     if args.cores > 1:
         # Prepare for multiprocessing
+        logger.debug('Preparing for multiprocessing')
         mp.set_start_method('spawn')
         manager = mp.Manager()
         queue = manager.Queue()
@@ -1040,6 +1079,7 @@ def run_all():
         watcher = pool.apply_async(mp_listener, args=(queue, args))
 
         # Spawn processes
+        logger.debug('Spawning multiprocessing workers')
         jobs = []
         for contig in contigs:
             job = pool.apply_async(mp_worker,
@@ -1050,14 +1090,16 @@ def run_all():
             jobs.append(job)
 
         # End multiprocessing
+        logger.debug('Waiting for multiprocessing worker to finish')
         for job in jobs:
             job.wait()
         queue.put('kill')
         pool.close()
         pool.join()
     else:
-        with stream_writer(args.out, sys.stdout) as output_stream, stream_writer(args.log, sys.stderr) as log_stream:
-            writer = ResultWriter(output_stream, log_stream, args.groups)
+        logger.debug('Running code on a single core')
+        with stream_writer(args.out, sys.stdout) as output_stream:
+            writer = ResultWriter(output_stream, args.groups)
             for contig in contigs:
                 for result in report_diag_region(args.vcf, contig, groups, reference,
                                                  min_samples=args.min_samples,
