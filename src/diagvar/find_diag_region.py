@@ -2,25 +2,23 @@ import logging
 import os.path
 import sys
 import argparse
-import pandas
 import gzip
-import copy
 import primer3
 import pysam
 import re
 import itertools
 import multiprocessing as mp
 import pdb # NOTE: remove for production code
+import queue
 
 from collections import deque, defaultdict
 from Bio import SeqIO
-from Bio import Seq
 from Bio.Data import IUPACData
 from contextlib import contextmanager
-from collections import Counter
+from logging.handlers import QueueHandler
 
-from .find_diag_var import find_diag_var, GroupedVariant, _parse_group_data
-from .print_align import render_variant
+from .find_diag_var import GroupedVariant, _parse_group_data
+# from .print_align import render_variant
 
 # Constants
 SNP_DELIM = ('<', '>')
@@ -59,14 +57,43 @@ primer3_col_names = [
 ]
 primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n in primer3_col_names}
 
-# Set up logger
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-stderr_handler = logging.StreamHandler()
-stderr_handler.setLevel(logging.WARNING)
-log_formatter = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
-stderr_handler.setFormatter(log_formatter)
-logger.addHandler(stderr_handler)
+
+def configure_global_logger(args=None, mode="w"):
+    global logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    stderr_handler = logging.StreamHandler()
+    stderr_handler.setLevel(logging.WARNING)
+    log_formatter = logging.Formatter('%(levelname)s: %(name)s: %(message)s')
+    stderr_handler.setFormatter(log_formatter)
+    logger.addHandler(stderr_handler)
+    if args is not None:
+        if args.log is None:
+            if args.log_level is None:
+                stderr_handler.setLevel("WARNING")
+            else:
+                stderr_handler.setLevel(args.log_level)
+        else:
+            log_file_handler = logging.FileHandler(filename=args.log, mode=mode)
+            if args.log_level is None:
+                log_file_handler.setLevel("INFO")
+            else:
+                log_file_handler.setLevel(args.log_level)
+            log_file_handler.setFormatter(log_formatter)
+            logger.addHandler(log_file_handler)
+    logger.debug('Logger initialized')
+    return logger
+
+
+def configure_subprocess_logger(queue):
+    global logger
+    logger = logging.getLogger(__name__)
+    while logger.hasHandlers():
+        logger.removeHandler(logger.handlers[0])
+    logger.addHandler(QueueHandler(queue))
+    logger.setLevel(logging.DEBUG)
+    return logger
 
 
 class ForkedPdb(pdb.Pdb):
@@ -82,6 +109,7 @@ class ForkedPdb(pdb.Pdb):
             pdb.Pdb.interaction(self, *args, **kwargs)
         finally:
             sys.stdin = _stdin
+
 
 def collapse_to_iupac(seqs):
     """Combine sequences into a consensus using IUPAC ambiguity codes
@@ -376,7 +404,7 @@ class GroupedRegion:
             replace_start = var.variant.pos - 1 - seq_ref_start
             replace_end = replace_start + len(var.variant.ref)
             if group is None:
-                consensus = var.variant.ref
+                replacement = var.variant.ref
             else:
                 alleles = var.allele_counts[group]
                 if len(alleles) == 0:  # If no data for this position, use N of equal length to reference
@@ -963,6 +991,7 @@ def _format_for_csv(region, reference):
 
 
 def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
+    logger.info(f"Starting scan of contig {contig['contig']}:{contig['start']}-{contig['end']}")
     vcf_handle = pysam.VariantFile(vcf_path)
     variants = vcf_handle.fetch(contig['contig'], start=contig['start'], end=contig['end'])
     stats = defaultdict(int)
@@ -1018,21 +1047,39 @@ class ResultWriter:
         self.update_stats(output)
         self.print_status()
 
-def mp_worker(queue, vcf_path, contig, groups, reference, **kwargs):
+
+def mp_worker(queue, log_queue, vcf_path, contig, groups, reference, **kwargs):
+    configure_subprocess_logger(log_queue)
     for result in report_diag_region(vcf_path, contig, groups, reference, **kwargs):
         queue.put(result)
     return None
 
 
-def mp_listener(queue, args):
+def mp_listener(result_queue, log_queue, args):
     '''listens for output on the queue and writes to a file. '''
+    global logger
+    logger = configure_global_logger(args, mode="a")
+    logger.warning("test_2")
     with stream_writer(args.out, sys.stdout) as output_stream:
         writer = ResultWriter(output_stream, args.groups)
-        while 1:
-            output = queue.get()
-            if output == "kill":
-                break
-            writer.write(output)
+        while True:
+            # Write one results returned by workers
+            try:
+                output = result_queue.get(block=False, timeout=0.1)
+                if output == "kill":
+                    break
+                writer.write(output)
+            except queue.Empty:
+                pass
+
+            # Write all logs returned by workers
+            while True:
+                try:
+                    logs = log_queue.get(block=False)
+                    # logger = logging.getLogger(logs.name)
+                    logger.handle(logs)
+                except queue.Empty:
+                    break
 
 
 def run_all():
@@ -1040,31 +1087,16 @@ def run_all():
     # Parse command line arguments
     args = parse_command_line_args()
 
-    # Set up logger
-    stderr_handler.setLevel(logging.WARNING)
-    if args.log is None:
-        if args.log_level is None:
-            stderr_handler.setLevel("WARNING")
-        else:
-            stderr_handler.setLevel(args.log_level)
-    else:
-        log_file_handler = logging.FileHandler(filename=args.log, mode="w")
-        if args.log_level is None:
-            log_file_handler.setLevel("INFO")
-        else:
-            log_file_handler.setLevel(args.log_level)
-        log_file_handler.setFormatter(log_formatter)
-        logger.addHandler(log_file_handler)
-    logger.debug('Logger initialized')
-
     # Log record of parsed parameters
+    global logger
+    logger = configure_global_logger(args)
     lines = [f"    {k : <15}: {v}" for k, v in vars(args).items() if v is not None]
     logger.info("\n".join(["Parameters used:"] + lines))
     logger.warning('test')
 
     # Prepare input data
     reference = _parse_reference(args.reference)
-    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=100000, flank_size=1000) #TODO base on amplicon size, need to add to args
+    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=50000, flank_size=1000) #TODO base on amplicon size, need to add to args
     vcf_handle = pysam.VariantFile(args.vcf)
     first_var = next(vcf_handle)
     groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
@@ -1075,27 +1107,34 @@ def run_all():
         mp.set_start_method('spawn')
         manager = mp.Manager()
         queue = manager.Queue()
+        log_queue = manager.Queue()
         pool = mp.Pool(args.cores)
-        watcher = pool.apply_async(mp_listener, args=(queue, args))
+        watcher = pool.apply_async(mp_listener, args=(queue, log_queue, args))
+
+        # Set main process logger to submit to the listener instead
+        configure_subprocess_logger(log_queue)
 
         # Spawn processes
         logger.debug('Spawning multiprocessing workers')
         jobs = []
         for contig in contigs:
             job = pool.apply_async(mp_worker,
-                                   args=(queue, args.vcf, contig, groups, reference),
+                                   args=(queue, log_queue, args.vcf, contig, groups, reference),
                                    kwds={'min_samples': args.min_samples,
                                          'min_reads': args.min_reads,
                                          'min_geno_qual': args.min_geno_qual})
             jobs.append(job)
 
         # End multiprocessing
-        logger.debug('Waiting for multiprocessing worker to finish')
+        logger.debug('Waiting for multiprocessing workers to finish')
         for job in jobs:
             job.wait()
         queue.put('kill')
         pool.close()
         pool.join()
+
+        # Reset logger to use main process
+        logger = configure_global_logger(args)
     else:
         logger.debug('Running code on a single core')
         with stream_writer(args.out, sys.stdout) as output_stream:
