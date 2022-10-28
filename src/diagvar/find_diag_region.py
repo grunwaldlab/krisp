@@ -57,8 +57,9 @@ primer3_col_names = [
 ]
 primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n in primer3_col_names}
 
+# Globals
 logger = logging.getLogger(__name__)
-
+failure_event = None
 
 def configure_global_logger(args=None, mode="w"):
     global logger
@@ -736,7 +737,7 @@ def find_diag_region(variants,
         subset of samples. TBD.
     """
     window_width = spacer_len - offset_right - offset_left
-    vcf_reader = GroupedVariant.from_vcf(variants, groups=groups,
+    vcf_reader = GroupedVariant.from_vcf(variants, groups,
                                          min_samples=min_samples,
                                          min_reads=min_reads,
                                          min_geno_qual=min_geno_qual)
@@ -845,8 +846,8 @@ def parse_command_line_args():
         description='Find regions where there are conserved variants for each group that are not found in other groups.')
     parser.add_argument('metadata', type=str,
                         help='A TSV file containing data with one row per sample. Two columns are required: `sample_id`, which contains the same sample IDs used in the VCF file, and `group`, which identifies which group each sample belongs to.')
-    parser.add_argument('vcf', type=str,
-                        help='A VCF file containing variant data for the samples grouped by the `metadata` file.')
+    parser.add_argument('--vcf', type=str, default="-",
+                        help='A VCF file containing variant data for the samples grouped by the `metadata` file. If not supplied, VCF data will be read from stanard input (stdin) using a single core. (default: read from stdin)')
     parser.add_argument('--index', type=str,
                         help='The path to an tabix index file for the VCF file. If not supplied, a file with the same name as the VCF file with .tbi/.csi appended will be searched for. If that is not found, an index file will be created.')
     parser.add_argument('--groups', type=str, nargs="+",
@@ -875,8 +876,6 @@ def parse_command_line_args():
 def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=1000):
     """Supply iterators for contigs/scaffolds/chormosomes in a VCF file.
 
-    TODO: add support for stdin
-
     Parameters
     ----------
     path : str
@@ -884,6 +883,9 @@ def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=
     index : str, optional
         The path to the index file for the VCF
     """
+    # If reading from stdin, return None
+    if path == "-":
+        return [None]
     # Get path to index file or create it
     if index is None:
         tbi_path = path + '.tbi'
@@ -992,12 +994,16 @@ def _format_for_csv(region, reference):
 
 
 def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
-    logger.info(f"Starting scan of contig {contig['contig']}:{contig['start']}-{contig['end']}")
-    vcf_handle = pysam.VariantFile(vcf_path)
-    variants = vcf_handle.fetch(contig['contig'], start=contig['start'], end=contig['end'])
+    if contig is None:  # If reading from stdin
+        logger.info(f"Reading VCF data from standard input (stdin).")
+        variants = pysam.VariantFile("-")
+    else:
+        logger.info(f"Starting scan of contig {contig['contig']}:{contig['start']}-{contig['end']}")
+        vcf_handle = pysam.VariantFile(vcf_path)
+        variants = vcf_handle.fetch(contig['contig'], start=contig['start'], end=contig['end'])
     stats = defaultdict(int)
     for region in find_diag_region(variants, groups, reference, **kwargs):
-        if failure_event.is_set():
+        if failure_event is not None and failure_event.is_set():
             logger.critical("Error detected in other worker process. Ending this process too.")
             return None
         stats[region.type] += 1
@@ -1107,14 +1113,19 @@ def run_all():
     lines = [f"    {k : <15}: {v}" for k, v in vars(args).items() if v is not None]
     logger.info("\n".join(["Parameters used:"] + lines))
 
-    # Prepare input data
+    # Read reference file
     reference = _parse_reference(args.reference)
-    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=500000, flank_size=1000) #TODO base on amplicon size, need to add to args
-    vcf_handle = pysam.VariantFile(args.vcf)
-    first_var = next(vcf_handle)
-    groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
 
-    if args.cores > 1:
+    # Prepare group data
+    if args.vcf == "-":  # If reading from stdin
+        contigs = [None]
+        groups = _parse_group_data(args.metadata, groups=args.groups)
+    else:
+        contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=500000, flank_size=1000) #TODO base on amplicon size, need to add to args
+        first_var = next(pysam.VariantFile(args.vcf))
+        groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
+
+    if args.vcf != "-" and args.cores > 1:
         # Prepare for multiprocessing
         logger.debug('Preparing for multiprocessing')
         mp.set_start_method('spawn')
@@ -1122,7 +1133,7 @@ def run_all():
         failure_event = manager.Event()
         queue = manager.Queue()
         log_queue = manager.Queue()
-        pool = mp.Pool(args.cores, initializer=mp_worker_init, initargs=(failure_event,))
+        pool = mp.Pool(args.cores + 1, initializer=mp_worker_init, initargs=(failure_event,))
         watcher = pool.apply_async(mp_listener, args=(queue, log_queue, args))
 
         # Set main process logger to submit to the listener process instead

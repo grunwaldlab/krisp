@@ -109,13 +109,15 @@ def _check_variant(
 class GroupedVariant:
     
     def __init__(self, variant, groups,
+                 check_groups=False,
                  min_samples=5,
                  min_reads=10,
                  min_geno_qual=40):
         self.variant = variant
-        self.groups = groups
-        # self.groups = {g: [x for x in ids if x in variant.samples.keys()] for
-        # g, ids in groups.items()}
+        if check_groups:  # optional check needed for reading from stdin
+            self.groups = {g: [x for x in ids if x in variant.samples.keys()] for g, ids in groups.items()}
+        else:
+            self.groups = groups
         self.min_samples = min_samples
         self.min_reads = min_reads
         self.min_geno_qual = min_geno_qual
@@ -125,12 +127,12 @@ class GroupedVariant:
         # Store counts of samples for each group
         #   Note: this can be different from the sum of counts in allele_counts
         #   below due to heterozygous positions
-        self.sample_counts = self._sample_counts(variant, groups,
+        self.sample_counts = self._sample_counts(variant, self.groups,
                                                  min_reads=min_reads,
                                                  min_geno_qual=min_geno_qual)
 
         # Store counts of each allele for each group
-        self.allele_counts = self._allele_counts(variant, groups,
+        self.allele_counts = self._allele_counts(variant, self.groups,
                                                  hetero=False,
                                                  min_reads=min_reads,
                                                  min_geno_qual=min_geno_qual)
@@ -142,10 +144,20 @@ class GroupedVariant:
         self.diagnostic = self._diagnostic(min_samples=min_samples)
 
     @classmethod
-    def from_vcf(cls, variants, **kwargs):
-        """Iterate over a variants, creating GroupedVariants objects"""
+    def from_vcf(cls, variants, groups, **kwargs):
+        """Iterate over a variants, creating GroupedVariants objects
+
+        Groups are checked once per vcf file to enhance performance
+        """
+        groups_checked = False
         for var in variants:
-            yield cls(var, **kwargs)
+            if groups_checked:
+                out = cls(var, groups, check_groups=False, **kwargs)
+            else:
+                out = cls(var, groups, check_groups=True, **kwargs)
+                groups = out.groups
+                groups_checked = True
+            yield out
 
     @classmethod
     def _count_genotypes(cls, variant, subset=None, hetero=True, unknown=True,
