@@ -557,7 +557,7 @@ def run_primer3(template, target_start, target_len, options=None):
 def consv_border_n(group, border_var, nearby_vars, max_offset):
     """Find the maximum size of adjacent conserved reference sequence in terms of reference and group sequence"""
     # Initialize cumulative length differences between reference and variant alleles
-    if border_var.variant.pos < nearby_vars[0].variant.pos:
+    if len(nearby_vars) > 0 and border_var.variant.pos < nearby_vars[0].variant.pos:
         ref_diff_offset = border_var.max_allele_len(group) - len(border_var.variant.ref)
     else:
         ref_diff_offset = 0
@@ -1107,7 +1107,7 @@ def run_all():
 
     # Prepare input data
     reference = _parse_reference(args.reference)
-    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=1000000, flank_size=1000) #TODO base on amplicon size, need to add to args
+    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=500000, flank_size=1000) #TODO base on amplicon size, need to add to args
     vcf_handle = pysam.VariantFile(args.vcf)
     first_var = next(vcf_handle)
     groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
