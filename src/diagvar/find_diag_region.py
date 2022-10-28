@@ -59,6 +59,7 @@ primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n i
 
 logger = logging.getLogger(__name__)
 
+
 def configure_global_logger(args=None, mode="w"):
     global logger
     logger = logging.getLogger(__name__)
@@ -795,13 +796,13 @@ def find_diag_region(variants,
 
         # Is there enough adjacent conserved regions to design primers?
         consv_len_up = consv_border_n(group=region.group,
-                                               border_var=region.variants[-1],
-                                               nearby_vars=region.upstream,
-                                               max_offset=max_amp_size)
+                                      border_var=region.variants[-1],
+                                      nearby_vars=region.upstream,
+                                      max_offset=max_amp_size)
         consv_len_dn = consv_border_n(group=region.group,
-                                               border_var=region.variants[0],
-                                               nearby_vars=region.downstream,
-                                               max_offset=max_amp_size)
+                                      border_var=region.variants[0],
+                                      nearby_vars=region.downstream,
+                                      max_offset=max_amp_size)
         if consv_len_up["group"] - overhang_len_up['group'] < 30:  #TODO base on primer3 primer size
             region.type = 'Unconserved'
             yield region
@@ -892,7 +893,7 @@ def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=
         elif os.path.isfile(csi_path):
             index = csi_path
         else:
-            print('Creating index...') #TODO change to logging
+            logger.info(f'Creating index file  "{tbi_path}"')
             pysam.tabix_index(path, preset='vcf', keep_original=True)
             index = tbi_path
     # Split contigs into chunks for processing
@@ -914,7 +915,8 @@ def _format_p3_output(p3_out):
 
 
 def _render_header(stream, out_sep=','):
-    print("group", "chrom", "n_diag", "fwd_start", "fwd_end", "rev_start", "rev_end", "crrna_start", "crrna_end", "seq_start", "seq_end",
+    print("group", "chrom", "n_diag", "fwd_start", "fwd_end", "rev_start",
+          "rev_end", "crrna_start", "crrna_end", "seq_start", "seq_end",
           *[primer3_col_key[n] for n in primer3_col_names],
           sep=out_sep, file=stream)
 
