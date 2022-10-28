@@ -8,7 +8,7 @@ import pysam
 import re
 import itertools
 import multiprocessing as mp
-import pdb # NOTE: remove for production code
+import pdb  # NOTE: remove for production code
 import queue
 
 from collections import deque, defaultdict
@@ -82,7 +82,6 @@ def configure_global_logger(args=None, mode="w"):
                 log_file_handler.setLevel(args.log_level)
             log_file_handler.setFormatter(log_formatter)
             logger.addHandler(log_file_handler)
-    logger.debug('Logger initialized')
     return logger
 
 
@@ -782,13 +781,13 @@ def find_diag_region(variants,
         overhang_left = spacer_len - region.region_length() - offset_right
         overhang_right = offset_right
         overhang_len_up = consv_border_n(group=region.group,
-                                               border_var=region.variants[-1],
-                                               nearby_vars=region.upstream,
-                                               max_offset=overhang_right)
+                                         border_var=region.variants[-1],
+                                         nearby_vars=region.upstream,
+                                         max_offset=overhang_right)
         overhang_len_dn = consv_border_n(group=region.group,
-                                               border_var=region.variants[0],
-                                               nearby_vars=region.downstream,
-                                               max_offset=overhang_left)
+                                         border_var=region.variants[0],
+                                         nearby_vars=region.downstream,
+                                         max_offset=overhang_left)
         if overhang_len_up['group'] < offset_right or overhang_len_dn['group'] < overhang_left:
             region.type = 'Unconserved'
             yield region
@@ -996,6 +995,9 @@ def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
     variants = vcf_handle.fetch(contig['contig'], start=contig['start'], end=contig['end'])
     stats = defaultdict(int)
     for region in find_diag_region(variants, groups, reference, **kwargs):
+        if failure_event.is_set():
+            logger.critical("Error detected in other worker process. Ending this process too.")
+            return None
         stats[region.type] += 1
         if region.type == "Diagnostic":
             output = _format_for_csv(region, reference)
@@ -1050,8 +1052,13 @@ class ResultWriter:
 
 def mp_worker(queue, log_queue, vcf_path, contig, groups, reference, **kwargs):
     configure_subprocess_logger(log_queue)
-    for result in report_diag_region(vcf_path, contig, groups, reference, **kwargs):
-        queue.put(result)
+    try:
+        for result in report_diag_region(vcf_path, contig, groups, reference, **kwargs):
+            queue.put(result)
+    except BaseException as error:
+        logger.exception(f"Error encountered while scanning contig {contig['contig']}:{contig['start']}-{contig['end']}:")
+        failure_event.set()
+        raise error
     return None
 
 
@@ -1059,13 +1066,14 @@ def mp_listener(result_queue, log_queue, args):
     '''listens for output on the queue and writes to a file. '''
     global logger
     logger = configure_global_logger(args, mode="a")
-    logger.warning("test_2")
     with stream_writer(args.out, sys.stdout) as output_stream:
         writer = ResultWriter(output_stream, args.groups)
         while True:
-            # Write one results returned by workers
+            # Write one result returned by workers
             try:
                 output = result_queue.get(block=False, timeout=0.1)
+                if output == "kill":
+                    break
                 if output == "kill":
                     break
                 writer.write(output)
@@ -1082,6 +1090,10 @@ def mp_listener(result_queue, log_queue, args):
                     break
 
 
+def mp_worker_init(event):
+    global failure_event
+    failure_event = event
+
 def run_all():
 
     # Parse command line arguments
@@ -1092,11 +1104,10 @@ def run_all():
     logger = configure_global_logger(args)
     lines = [f"    {k : <15}: {v}" for k, v in vars(args).items() if v is not None]
     logger.info("\n".join(["Parameters used:"] + lines))
-    logger.warning('test')
 
     # Prepare input data
     reference = _parse_reference(args.reference)
-    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=50000, flank_size=1000) #TODO base on amplicon size, need to add to args
+    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=1000000, flank_size=1000) #TODO base on amplicon size, need to add to args
     vcf_handle = pysam.VariantFile(args.vcf)
     first_var = next(vcf_handle)
     groups = _parse_group_data(args.metadata, groups=args.groups, possible=first_var.samples.keys())
@@ -1106,12 +1117,13 @@ def run_all():
         logger.debug('Preparing for multiprocessing')
         mp.set_start_method('spawn')
         manager = mp.Manager()
+        failure_event = manager.Event()
         queue = manager.Queue()
         log_queue = manager.Queue()
-        pool = mp.Pool(args.cores)
+        pool = mp.Pool(args.cores, initializer=mp_worker_init, initargs=(failure_event,))
         watcher = pool.apply_async(mp_listener, args=(queue, log_queue, args))
 
-        # Set main process logger to submit to the listener instead
+        # Set main process logger to submit to the listener process instead
         configure_subprocess_logger(log_queue)
 
         # Spawn processes
@@ -1128,13 +1140,13 @@ def run_all():
         # End multiprocessing
         logger.debug('Waiting for multiprocessing workers to finish')
         for job in jobs:
-            job.wait()
+            job.get()
         queue.put('kill')
         pool.close()
         pool.join()
 
         # Reset logger to use main process
-        logger = configure_global_logger(args)
+        logger = configure_global_logger(args, mode='a')
     else:
         logger.debug('Running code on a single core')
         with stream_writer(args.out, sys.stdout) as output_stream:
