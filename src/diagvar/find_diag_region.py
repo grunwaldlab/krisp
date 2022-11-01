@@ -17,6 +17,7 @@ from Bio.Data import IUPACData
 from contextlib import contextmanager
 from logging.handlers import QueueHandler
 from statistics import mean
+from nltk.metrics import distance
 
 from .find_diag_var import GroupedVariant, _parse_group_data
 # from .print_align import render_variant
@@ -612,7 +613,7 @@ def is_nearby_conserved(group, border_var, nearby_vars, max_offset):
 class DiagosticRegion(GroupedRegion):
     """The class for reporting diagnostic regions."""
 
-    def __init__(self,  variants, group, reference, upstream, downstream, p3, crrna_seq, downstream_seq, upstream_seq, temp_range, crrna_range):
+    def __init__(self,  variants, group, reference, upstream, downstream, p3, crrna_seq, downstream_seq, upstream_seq, temp_range, crrna_range, min_bases):
         super().__init__(variants, group, reference, upstream, downstream)
         self.p3 = p3
         self.downstream_seq = downstream_seq
@@ -621,9 +622,10 @@ class DiagosticRegion(GroupedRegion):
         self.temp_range = temp_range
         self.crrna_range = crrna_range
         self.type = "Diagnostic"
+        self.min_bases = min_bases
 
     @staticmethod
-    def from_grouped_region(region, p3, crrna_seq, downstream_seq, upstream_seq, temp_range, crrna_range):
+    def from_grouped_region(region, p3, crrna_seq, downstream_seq, upstream_seq, temp_range, crrna_range, min_bases):
         return DiagosticRegion(variants=region.variants,
                                group=region.group,
                                reference=region.reference,
@@ -634,7 +636,8 @@ class DiagosticRegion(GroupedRegion):
                                downstream_seq=downstream_seq,
                                upstream_seq=upstream_seq,
                                temp_range=temp_range,
-                               crrna_range=crrna_range)
+                               crrna_range=crrna_range,
+                               min_bases=min_bases)
 
     def left_range(self):
         """Start/stop reference sequence indexes of the left primer."""
@@ -819,14 +822,29 @@ def find_diag_region(variants,
             yield region
             continue
 
-        # Run primer3 on group-specific template
+
+        # Are there enough diagnostic bases?
         start_crrna_ref = region.variants[0].variant.pos - 1 - overhang_len_dn['ref']
         end_crrna_ref = region.variants[-1].variant.pos - 1 + overhang_len_up['ref']
+        crrna_seq = region.sequence(reference=reference, start=start_crrna_ref, end=end_crrna_ref, group=region.group)
+        crrna_nontaget_seqs = [region.sequence(reference=reference, start=start_crrna_ref, end=end_crrna_ref, group=g) for g in groups if g is not region.group]
+        edit_dists = [distance.edit_distance("".join(crrna_seq), "".join(seq)) for seq in crrna_nontaget_seqs]
+        min_dist = min(edit_dists)
+        if min_dist < min_bases:
+            region.type = 'Undiagnostic'
+            yield region
+            continue
+
+        if min_dist == 12:
+            import pdb
+            pdb.set_trace()
+
+        # Run primer3 on group-specific template
         start_tmp_ref = region.variants[0].variant.pos - 1 - consv_len_dn['ref']
         end_tmp_ref = region.variants[-1].variant.pos - 1 + consv_len_up['ref']
         downstream_seq = region.sequence(reference=reference, start=start_tmp_ref, end=start_crrna_ref-1, group=region.group)
         upstream_seq = region.sequence(reference=reference, start=end_crrna_ref+1, end=end_tmp_ref, group=region.group)
-        crrna_seq = region.sequence(reference=reference, start=start_crrna_ref, end=end_crrna_ref, group=region.group)
+
         template_seq = downstream_seq + crrna_seq + upstream_seq
         start_crrna_tmp = len(downstream_seq)
         end_crrna_tmp = start_crrna_tmp + len(crrna_seq) - 1
@@ -846,7 +864,7 @@ def find_diag_region(variants,
         # Return data for the diagnostic region
         region.type = 'Diagnostic'
         output = DiagosticRegion.from_grouped_region(region, p3=p3_out, crrna_seq=crrna_seq, downstream_seq=downstream_seq, upstream_seq=upstream_seq,
-                                                     temp_range=[start_tmp_ref, end_tmp_ref], crrna_range=[start_crrna_ref, end_crrna_ref])
+                                                     temp_range=[start_tmp_ref, end_tmp_ref], crrna_range=[start_crrna_ref, end_crrna_ref], min_bases=min_dist)
 
         yield output
 
@@ -872,12 +890,18 @@ def parse_command_line_args():
                         help='One or more groups that are to be distinguished by variants. These should match the values of the column specified by --group_col in the metadata file. (default: use all groups)')
     parser.add_argument('--out', type=str, metavar='PATH',
                         help='The output file to create. If not supplied, results will be printed to the screen (standard out). (default: print to stdout)')
+    parser.add_argument('--align_out', type=str, metavar='PATH',
+                        help='A file path to print human-readable alignments of the most promising diagnostic regions. (default: do not output)')
+    parser.add_argument('--align_max', type=int, default=100, metavar='INT',
+                        help='The maximum number of alignments for each group to print to --align_out. (default: %(default)s)')
     parser.add_argument('--min_samples', type=int, default=5, metavar='INT',
                         help='The number of samples with acceptable data (see `--min_reads`) each group must have for a given variant. (default: %(default)s)')
     parser.add_argument('--min_reads', type=int, default=10, metavar='INT',
                         help='The number of reads a variant must be represented by in a given sample for the data of that sample to be considered. This corresponds to the per-sample GATK output in the VCF encoded as "DP". (default: %(default)s)')
     parser.add_argument('--min_geno_qual', type=int, default=40, metavar='INT',
                         help='The minimum genotype quality score (phred scale). This corresponds to the per-sample GATK output in the VCF encoded as "GQ". (default: %(default)s)')
+    parser.add_argument('--min_bases', type=int, default=1, metavar='INT',
+                        help='The minimum number of bases distinguishing the target group from other groups. (default: %(default)s)')
     parser.add_argument('--cores', type=int, default=1, metavar='INT',
                         help='The number of processors to use for parallel processing. (default: %(default)s)')
     parser.add_argument('--log', type=str, metavar='PATH',
@@ -965,7 +989,8 @@ def _format_for_csv(region, reference):
 
     group = region.group
     chrom = region.variants[0].variant.chrom
-    n_diag = sum([x is not None for x in region.diagnostic()])
+    # n_diag = sum([x is not None for x in region.diagnostic()])
+    n_diag = region.min_bases
 
     fwd_start = fwd_range[0] + 1  # The +1 goes from 0-based in 1-based indexing
     fwd_end = fwd_range[1] + 1
@@ -1145,7 +1170,7 @@ def run_all():
     groups = _parse_group_data(args.metadata, groups=args.groups, sample_col=args.sample_col, group_col=args.group_col)
     contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=500000, flank_size=1000) #TODO base on amplicon size, need to add to args
     search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'tm',
-                        'gc', 'primer_size', 'amp_size', 'max_sec_tm')
+                        'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases')
     search_args = {k: v for k, v in vars(args).items() if k in search_arg_names}
 
     if args.vcf != "-" and args.cores > 1:
