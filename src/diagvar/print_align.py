@@ -3,6 +3,23 @@ import math
 from collections import defaultdict
 
 
+class Annotation:
+
+    def __init__(self, name, seq, start):
+        self.name = name
+        self.seq = seq
+        self.start = start
+
+
+def cumulative(lists):
+    """
+    https://www.geeksforgeeks.org/python-program-to-find-cumulative-sum-of-a-list/
+    """
+    length = len(lists)
+    cu_list = [sum(lists[0:x:1]) for x in range(0, length + 1)]
+    return cu_list[1:]
+
+
 def _mask_same(seqs, ref):
     """If loci are the same, letter will be replaced with a period
 
@@ -28,7 +45,14 @@ def _mask_same(seqs, ref):
     return seqs
 
 
-def _pad_sequences(seqs, ref):
+def pos_to_chunk_index(pos, ref):
+    pos_to_chunk_key = {p - 1: i for i, p in enumerate(cumulative([len(c.strip()) for c in ref]))}
+    for p, i in pos_to_chunk_key.items():
+        if p >= pos:
+            return {'chunk': i, 'offset': p - pos}
+
+
+def _pad_sequences(seqs, ref, annots):
     """Adds padding for all sequences, with spacing or dashes
     Parameters
     ----------
@@ -58,6 +82,7 @@ def _pad_sequences(seqs, ref):
                                                                      pad_str)
         return None
 
+    # Pad reference and sequences to equal column widths
     for col_index in range(len(ref)):
         column = [ref[col_index]] + [seq[col_index] for seq in seqs.values()]
         max_width = max([len(x) for x in column])
@@ -65,30 +90,51 @@ def _pad_sequences(seqs, ref):
             _pad_ref_and_seqs(col_index, max_width, pad_str=" ")
         else:
             _pad_ref_and_seqs(col_index, max_width, pad_str="-")
-    return seqs, ref
+
+    # Split annotation seq names into columns for printing later
+    col_widths = [len(c) for c in ref]
+    annot_out = [" " * len(c) for c in ref]
+    for annot in annots:
+        start = pos_to_chunk_index(annot.start, ref)
+        end = pos_to_chunk_index(annot.start + len(annot.seq) - 1, ref)
+        annot_col_widths = [col_widths[i] for i in range(start['chunk'], end['chunk'] + 1)]
+        print_len = sum(annot_col_widths)
+        name = ' ' + annot.name + ' '
+        text = '└' + name.center(print_len - 2, '─') + '┘'
+        text_inter = iter(text)
+        text_cols = ["".join(next(text_inter) for i in range(w)) for w in annot_col_widths]
+        for text_index, ref_index in enumerate(range(start['chunk'], end['chunk'] + 1)):
+            annot_out[ref_index] = text_cols[text_index]
+
+    return seqs, ref, annot_out
 
 
-def _print_align(seqs, ref, ref_name="Reference"):
+def _print_align(seqs, ref, annot_text, ref_name="Reference"):
     """Adjusts labels, prints reference and sequences
     """
 
-    def cumulative(lists):
-        """
-        https://www.geeksforgeeks.org/python-program-to-find-cumulative-sum-of-a-list/
-        """
-        length = len(lists)
-        cu_list = [sum(lists[0:x:1]) for x in range(0, length + 1)]
-        return cu_list[1:]
 
     def _print_one_line(seqs, ref, ref_name="Reference"):
         """Repeated function to print the output format"""
+        # Get max length of labels
         labels = list(seqs.keys()) + [ref_name]
         max_len = max([len(seq) for seq in labels])
+
+        # Print alignment
         ref_name = ref_name.rjust(max_len, " ")
         print(f"{ref_name} : " + ''.join(ref))
         for group_name, seq in seqs.items():
             group_name = group_name.rjust(max_len, " ")
             print(f"{group_name} : " + ''.join(seq))
+
+        # Print annotation names
+        print(' ' * (max_len + 3) + ''.join(annot_text))
+        # ref_len = sum([len(x) for x in ref])
+        # annot_line = ([" "] * ref_len)
+        # for annot in annots:
+        #     size =
+        #     for index, nucleotide in enumerate(annot.seq):
+        #         annot_line[annot.start + index] = nucleotide
 
     def split(x, f):
         """
@@ -98,7 +144,6 @@ def _print_align(seqs, ref, ref_name="Reference"):
         for v, k in zip(x, f):
             res[k].append(v)
         return res
-#   term_width: get the width of the terminal
 #   align_width: consistent label length so sequences line up
 #   col_widths: find length of columns in ref
 #   row_index: length of character divided by aligned width, rounded down
@@ -119,23 +164,24 @@ def _print_align(seqs, ref, ref_name="Reference"):
         print()
 
 
-def format_seq_annot(primer, ref):
+def format_seq_annot(annots, ref):
     """Go through annotated sequences and overwrite to add primer data
 
     Parameters:
     -----------
-    primer: dict of list of str
+    annots: list of Annotation
         primers identified by Primer3/ package
     ref: list of str
         list of alleles in the reference genome
     Return:
          list(?)
     """
-    output = ([" "] * len(ref))
-    for seq, start in primer.items():
-        for index, nucleotide in enumerate(seq):
-            output[start + index] = nucleotide
-
+    ref_len = sum([len(x) for x in ref])
+    output = ([" "] * ref_len)
+    for annot in annots:
+        start = pos_to_chunk_index(annot.start, ref)
+        for index, nucleotide in enumerate(annot.seq):
+            output[start['chunk'] + index] = nucleotide
     return output
 
 
@@ -148,16 +194,15 @@ def render_variant(seqs, ref, annots=None):
         sequences to align, named by group
     ref : list of str
         the reference used to call the variants
-    annots : dict of str, int
+    annots : list of Annotation
         sequences to annotate alignment, keys are sequences, values are start
         position in the alignment
     """
     seqs = _mask_same(seqs, ref)
     if annots is not None:
         seqs["oligos"] = format_seq_annot(annots, ref)
-    seqs, ref = _pad_sequences(seqs, ref)
-    _print_align(seqs, ref)
-
+    seqs, ref, annot_text = _pad_sequences(seqs, ref, annots)
+    _print_align(seqs, ref, annot_text)
     return None
 
 
@@ -181,6 +226,9 @@ if __name__ == "__main__":
                       "", "G", "<123G12?>", "A", "C", "A", "G", "G", "T", "",
                       "G", "<123G12?>", "A", "C", "A", "G", "G", "T", "", "G",
                       "<123G12?>", "A", "C"]}
-    annotation = {'ATTGCATGA': 33, 'TGGTCCATGAT': 45, 'ATTGTAAC': 12}
-    #TODO: add information about forward and reverse primers
+    annotation = [Annotation("Left primer", "ATTGCATGA", 33),
+                  Annotation("crRNA", "TGGTCCATGAT", 45),
+                  Annotation("Right primer", "ATTGTAAC", 12)]
     render_variant(seqs, ref, annots=annotation)
+
+

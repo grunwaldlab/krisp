@@ -20,7 +20,7 @@ from statistics import mean
 from nltk.metrics import distance
 
 from .find_diag_var import GroupedVariant, _parse_group_data
-# from .print_align import render_variant
+from .print_align import render_variant, Annotation
 
 # Constants
 SNP_DELIM = ('<', '>')
@@ -394,7 +394,7 @@ class GroupedRegion:
         var_starts = [v.variant.pos - 1 for v in vars_in_range]
         var_ends = [s + v.variant.rlen - 1 for v, s in zip(vars_in_range, var_starts)]
         var_lens = [e - s + 1 for s, e in zip(var_starts, var_ends)]
-        var_diffs = [l - v.max_allele_len(group) for v, l in zip(vars_in_range, var_lens)]
+        # var_diffs = [l - v.max_allele_len(group) for v, l in zip(vars_in_range, var_lens)]
         vars_in_range = [x for _, x in sorted(zip(var_ends, vars_in_range), key=lambda pair: pair[0])]
 
         # Adjust start and end positions of sequence to span all variants
@@ -406,25 +406,36 @@ class GroupedRegion:
         for var in reversed(vars_in_range):
             replace_start = var.variant.pos - 1 - seq_ref_start
             replace_end = replace_start + len(var.variant.ref)
+            is_diag_site = any([x is not None for x in var.diagnostic.values()])
             if group is None:
                 replacement = var.variant.ref
             else:
+                is_diag_for_group = var.diagnostic[group] is not None
                 alleles = var.allele_counts[group]
                 if len(alleles) == 0:  # If no data for this position, use N of equal length to reference
                     consensus = "N" * var.variant.rlen
                 else:
                     consensus = collapse_to_iupac(alleles.keys())
                 if annotate:
-                    if var.diagnostic[group] is None:
-                        replacement = consensus.upper()
+                    if is_diag_site:
+                        replacement = ";".join([k + str(v) for k, v in alleles.items()])
+                        if is_diag_for_group:
+                            replacement = '<' + replacement + '>'
                     else:
-                        replacement = '<' + ";".join([k+str(v) for k, v in alleles.items()]) + '>'
+                        replacement = consensus.upper()
                 else:
-                    if var.diagnostic[group] is None:
-                        replacement = consensus.lower()
-                    else:
+                    if is_diag_for_group:
                         replacement = consensus.upper()
-            out_seq = out_seq[:replace_start] + list(replacement) + out_seq[replace_end:]
+                    else:
+                        replacement = consensus.lower()
+            if annotate:
+                out_seq = out_seq[:replace_start] + [replacement] + out_seq[replace_end:]
+            else:
+                out_seq = out_seq[:replace_start] + list(replacement) + out_seq[replace_end:]
+            # if annotate:
+            #     import pdb
+            #     pdb.set_trace()
+
 
         # Trim sequence to original start and end points
         if seq_ref_end > end:
@@ -891,9 +902,7 @@ def parse_command_line_args():
     parser.add_argument('--out', type=str, metavar='PATH',
                         help='The output file to create. If not supplied, results will be printed to the screen (standard out). (default: print to stdout)')
     parser.add_argument('--align_out', type=str, metavar='PATH',
-                        help='A file path to print human-readable alignments of the most promising diagnostic regions. (default: do not output)')
-    parser.add_argument('--align_max', type=int, default=100, metavar='INT',
-                        help='The maximum number of alignments for each group to print to --align_out. (default: %(default)s)')
+                        help='A file path to print human-readable alignments of diagnostic regions. (default: do not output)')
     parser.add_argument('--min_samples', type=int, default=5, metavar='INT',
                         help='The number of samples with acceptable data (see `--min_reads`) each group must have for a given variant. (default: %(default)s)')
     parser.add_argument('--min_reads', type=int, default=10, metavar='INT',
@@ -981,7 +990,7 @@ def stream_writer(file_path=None, default_stream=sys.stdout):
         file_handle.close()
 
 
-def _format_for_csv(region, reference):
+def _format_for_csv(region, reference, groups):
     fwd_range = region.left_range()
     rev_range = region.right_range()
     crrna_range = region.crrna_range
@@ -1001,10 +1010,7 @@ def _format_for_csv(region, reference):
     seq_start = region.temp_range[0] + 1
     seq_end = region.temp_range[1] + 1
 
-    # up_seq = ''.join(region.upstream_seq)
-    # down_seq = ''.join(region.downstream_seq)
-    # crrna_seq = ''.join(region.crrna_seq)
-
+    # Make unannotated sequences of target group
     def format_seq(start, end):
         out = region.sequence(start=start, end=end,
                               reference=reference, group=region.group, annotate=False)
@@ -1040,9 +1046,47 @@ def _format_for_csv(region, reference):
         "seq_adj_right": seq_adj_right
     }
     output.update(_format_p3_output(region.p3))
+    # output.update(group_seqs)
 
     return output
 
+
+def _print_alignment(region, reference, groups):
+    fwd_range = region.left_range()
+    rev_range = region.right_range()
+    crrna_range = region.crrna_range
+
+    # Format sequences for each group
+    def format_seq(group, start, end):
+        out = region.sequence(start=start, end=end,
+                              reference=reference, group=group, annotate=True)
+        return out
+    group_seqs = {g: format_seq(g, start=fwd_range[0], end=rev_range[1]) for g in groups}
+    ref_seq = format_seq(None, start=fwd_range[0], end=rev_range[1])
+
+    # Format primer and crrna sequences
+    def format_oligo(start, end):
+        out = region.sequence(start=start, end=end,
+                              reference=reference, group=region.group, annotate=False)
+        return "".join(out)
+    seq_primer_left = format_oligo(start=fwd_range[0], end=fwd_range[1])
+    seq_primer_right = format_oligo(start=rev_range[0], end=rev_range[1])
+    seq_crrna = format_oligo(start=crrna_range[0], end=crrna_range[1])
+    # oligos = {
+    #     seq_primer_left: 0,
+    #     seq_crrna: crrna_range[0] - fwd_range[0],
+    #     seq_primer_right: rev_range[0] - fwd_range[0]
+    # }
+    oligos = [
+        Annotation(name="Left primer", seq=seq_primer_left, start=0),
+        Annotation(name="crRNA", seq=seq_crrna, start=crrna_range[0] - fwd_range[0]),
+        Annotation(name="Right primer", seq=seq_primer_right, start=rev_range[0] - fwd_range[0])
+    ]
+
+    import pdb
+    pdb.set_trace()
+
+    render_variant(seqs=group_seqs, ref=ref_seq, annots=oligos)
 
 def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
     if contig is None:  # If reading from stdin
@@ -1059,7 +1103,8 @@ def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
             return None
         stats[region.type] += 1
         if region.type == "Diagnostic":
-            output = _format_for_csv(region, reference)
+            output = _format_for_csv(region, reference, groups)
+            _print_alignment(region, reference, groups)
             yield {'result': output, 'stats': stats}
             stats = defaultdict(int)
     return None
