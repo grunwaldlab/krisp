@@ -131,3 +131,11 @@ dmypy.json
 # Pycharm
 .idea/misc.xml
 .idea/krisp.iml
+
+# Other
+-.gz
+-.gz.tbi
+cProfile
+test_output
+test_data
+presentations
