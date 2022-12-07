@@ -432,10 +432,6 @@ class GroupedRegion:
                 out_seq = out_seq[:replace_start] + [replacement] + out_seq[replace_end:]
             else:
                 out_seq = out_seq[:replace_start] + list(replacement) + out_seq[replace_end:]
-            # if annotate:
-            #     import pdb
-            #     pdb.set_trace()
-
 
         # Trim sequence to original start and end points
         if seq_ref_end > end:
@@ -846,9 +842,12 @@ def find_diag_region(variants,
             yield region
             continue
 
-        if min_dist == 12:
-            import pdb
-            pdb.set_trace()
+        # Are there no overlapping variants TODO: fix so this is not needed
+        for v1, v2 in zip(list(region.variants)[:-1], list(region.variants)[1:]):
+            if v1.variant.stop > v2.variant.start:
+                region.type = 'Overlapping'
+                yield region
+                continue
 
         # Run primer3 on group-specific template
         start_tmp_ref = region.variants[0].variant.pos - 1 - consv_len_dn['ref']
@@ -1052,6 +1051,7 @@ def _format_for_csv(region, reference, groups):
 
 
 def _print_alignment(region, reference, groups):
+
     fwd_range = region.left_range()
     rev_range = region.right_range()
     crrna_range = region.crrna_range
@@ -1083,12 +1083,9 @@ def _print_alignment(region, reference, groups):
         Annotation(name="Right primer", seq=seq_primer_right, start=rev_range[0] - fwd_range[0])
     ]
 
-    import pdb
-    pdb.set_trace()
+    return render_variant(seqs=group_seqs, ref=ref_seq, p3=region.p3, annots=oligos)
 
-    render_variant(seqs=group_seqs, ref=ref_seq, annots=oligos)
-
-def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
+def report_diag_region(vcf_path, contig, groups, reference, args, **kwargs):
     if contig is None:  # If reading from stdin
         logger.info(f"Reading VCF data from standard input (stdin).")
         variants = pysam.VariantFile("-")
@@ -1104,15 +1101,18 @@ def report_diag_region(vcf_path, contig, groups, reference, **kwargs):
         stats[region.type] += 1
         if region.type == "Diagnostic":
             output = _format_for_csv(region, reference, groups)
-            _print_alignment(region, reference, groups)
-            yield {'result': output, 'stats': stats}
+            if args.align_out is None:
+                alignment = None
+            else:
+                alignment = _print_alignment(region, reference, groups)
+            yield {'result': output, 'stats': stats, 'alignment': alignment}
             stats = defaultdict(int)
     return None
 
 
 class ResultWriter:
 
-    def __init__(self, output_stream, groups):
+    def __init__(self, output_stream, groups, align_path=None):
         self.result_header_printed = False
         self.stat_header_printed = False
         self.stats = defaultdict(int)
@@ -1121,6 +1121,9 @@ class ResultWriter:
         self.variant_counts = {s: 0 for s in self.stat_names}
         self.groups = groups
         self.group_counts = {g: 0 for g in groups}
+        self.align_path = align_path
+        if align_path is not None:
+            self.align_out = open(align_path, "w")
 
     def print_result(self, result):
         if not self.result_header_printed:
@@ -1148,16 +1151,21 @@ class ResultWriter:
             if stat in self.variant_counts:
                 self.variant_counts[stat] += count
 
+    def write_alignment(self, output):
+        if self.align_path is not None:
+            self.align_out.writelines([x + '\n' for x in output] + ['\n'])
+
     def write(self, output):
         self.print_result(output['result'])
+        self.write_alignment(output['alignment'])
         self.update_stats(output)
         self.print_status()
 
 
-def mp_worker(queue, log_queue, vcf_path, contig, groups, reference, **kwargs):
+def mp_worker(queue, log_queue, args, contig, groups, reference, **kwargs):
     configure_subprocess_logger(log_queue)
     try:
-        for result in report_diag_region(vcf_path, contig, groups, reference, **kwargs):
+        for result in report_diag_region(args.vcf, contig, groups, reference, args, **kwargs):
             queue.put(result)
     except BaseException as error:
         logger.exception(f"Error encountered while scanning contig {contig['contig']}:{contig['start']}-{contig['end']}:")
@@ -1171,13 +1179,11 @@ def mp_listener(result_queue, log_queue, args):
     global logger
     logger = configure_global_logger(args, mode="a")
     with stream_writer(args.out, sys.stdout) as output_stream:
-        writer = ResultWriter(output_stream, args.groups)
+        writer = ResultWriter(output_stream, args.groups, align_path=args.align_out)
         while True:
             # Write one result returned by workers
             try:
                 output = result_queue.get(block=False, timeout=0.1)
-                if output == "kill":
-                    break
                 if output == "kill":
                     break
                 writer.write(output)
@@ -1237,7 +1243,7 @@ def run_all():
         jobs = []
         for contig in contigs:
             job = pool.apply_async(mp_worker,
-                                   args=(queue, log_queue, args.vcf, contig, groups, reference),
+                                   args=(queue, log_queue, args, contig, groups, reference),
                                    kwds=search_args)
             jobs.append(job)
 
@@ -1254,9 +1260,9 @@ def run_all():
     else:
         logger.debug('Running code on a single core')
         with stream_writer(args.out, sys.stdout) as output_stream:
-            writer = ResultWriter(output_stream, args.groups)
+            writer = ResultWriter(output_stream, args.groups, align_path=args.align_out)
             for contig in contigs:
-                for result in report_diag_region(args.vcf, contig, groups, reference,
+                for result in report_diag_region(args.vcf, contig, groups, reference, args,
                                                  **search_args):
                     writer.write(result)
 

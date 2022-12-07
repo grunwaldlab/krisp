@@ -49,7 +49,7 @@ def pos_to_chunk_index(pos, ref):
     pos_to_chunk_key = {p - 1: i for i, p in enumerate(cumulative([len(c.strip()) for c in ref]))}
     for p, i in pos_to_chunk_key.items():
         if p >= pos:
-            return {'chunk': i, 'offset': p - pos}
+            return {'chunk': i, 'offset': abs(p - pos)}
 
 
 def _pad_sequences(seqs, ref, annots):
@@ -121,20 +121,23 @@ def _print_align(seqs, ref, annot_text, ref_name="Reference"):
         max_len = max([len(seq) for seq in labels])
 
         # Print alignment
+        output = []
         ref_name = ref_name.rjust(max_len, " ")
-        print(f"{ref_name} : " + ''.join(ref))
+        output.append(f"{ref_name} : " + ''.join(ref))
         for group_name, seq in seqs.items():
             group_name = group_name.rjust(max_len, " ")
-            print(f"{group_name} : " + ''.join(seq))
+            output.append(f"{group_name} : " + ''.join(seq))
 
         # Print annotation names
-        print(' ' * (max_len + 3) + ''.join(annot_text))
+        output.append(' ' * (max_len + 3) + ''.join(annot_text))
         # ref_len = sum([len(x) for x in ref])
         # annot_line = ([" "] * ref_len)
         # for annot in annots:
         #     size =
         #     for index, nucleotide in enumerate(annot.seq):
         #         annot_line[annot.start + index] = nucleotide
+
+        return output
 
     def split(x, f):
         """
@@ -158,10 +161,11 @@ def _print_align(seqs, ref, annot_text, ref_name="Reference"):
     row_index = [math.floor(x/align_width) for x in cumulative(col_widths)]
     chunked_ref = split(ref, row_index)
     chunked_seqs = {k: split(v, row_index) for k, v in seqs.items()}
+    output = []
     for index in range(len(chunked_ref)):
         row_seqs = {k: v[index] for k, v in chunked_seqs.items()}
-        _print_one_line(row_seqs, chunked_ref[index], ref_name=ref_name)
-        print()
+        output.extend(_print_one_line(row_seqs, chunked_ref[index], ref_name=ref_name))
+    return output
 
 
 def format_seq_annot(annots, ref):
@@ -185,7 +189,7 @@ def format_seq_annot(annots, ref):
     return output
 
 
-def render_variant(seqs, ref, annots=None):
+def render_variant(seqs, ref, p3, annots=None):
     """Displaying diagnostic variant in human-readable form
 
     Parameters
@@ -194,16 +198,32 @@ def render_variant(seqs, ref, annots=None):
         sequences to align, named by group
     ref : list of str
         the reference used to call the variants
+    p3 : dict
+        raw primer3 output
     annots : list of Annotation
         sequences to annotate alignment, keys are sequences, values are start
         position in the alignment
+
+    Returns
+    -------
+    list of str
+        one str for each line to print
     """
+
+
+    # Make alignment
     seqs = _mask_same(seqs, ref)
     if annots is not None:
         seqs["oligos"] = format_seq_annot(annots, ref)
     seqs, ref, annot_text = _pad_sequences(seqs, ref, annots)
-    _print_align(seqs, ref, annot_text)
-    return None
+    output = _print_align(seqs, ref, annot_text)
+
+    # Make Primer3 output
+    # import pdb
+    # pdb.set_trace()
+    # output += ['Test']
+
+    return output
 
 
 if __name__ == "__main__":
