@@ -884,16 +884,16 @@ def parse_command_line_args():
     logger.debug('Parsing command line arguments')
     parser = argparse.ArgumentParser(
         description='Find regions where there are conserved variants for each group that are not found in other groups.')
-    parser.add_argument('metadata', type=str, metavar='PATH',
+    parser.add_argument('metadata', type=str, metavar='METADATA',
                         help='A TSV file containing data with one row per sample. Two columns are required: one which contains the same sample IDs used in the VCF file, and one which identifies which group each sample belongs to. See --sample_col and --group_col for default values and how to specify custom column names.')
-    parser.add_argument('reference', type=str, metavar='PATH',
+    parser.add_argument('reference', type=str, metavar='REFERENCE',
                         help='The reference file used to make the VCF input. If supplied, the sequence of the region containing each conserved variant is returned with the output.')
+    parser.add_argument('--vcf', type=str, default="-", metavar='PATH',
+                        help='A VCF file containing variant data for the samples grouped by the `metadata` file. If not supplied, VCF data will be read from stanard input (stdin) using a single core. (default: read from stdin)')
     parser.add_argument('--sample_col', type=str, default="sample_id", metavar='TEXT',
                         help='The names of column in the metadata containing sample IDs. (default: %(default)s)')
     parser.add_argument('--group_col', type=str, default="group", metavar='TEXT',
                         help='The names of column in the metadata containing group IDs. Samples with the same groups ID will represent that group. (default: %(default)s)')
-    parser.add_argument('--vcf', type=str, default="-", metavar='PATH',
-                        help='A VCF file containing variant data for the samples grouped by the `metadata` file. If not supplied, VCF data will be read from stanard input (stdin) using a single core. (default: read from stdin)')
     parser.add_argument('--index', type=str, metavar='PATH',
                         help='The path to an tabix index file for the VCF file. If not supplied, a file with the same name as the VCF file with .tbi/.csi appended will be searched for. If that is not found, an index file will be created in the same directory as the VCF file.')
     parser.add_argument('--groups', type=str, nargs="+", metavar='TEXT',
@@ -902,6 +902,10 @@ def parse_command_line_args():
                         help='The output file to create. If not supplied, results will be printed to the screen (standard out). (default: print to stdout)')
     parser.add_argument('--align_out', type=str, metavar='PATH',
                         help='A file path to print human-readable alignments of diagnostic regions. (default: do not output)')
+    parser.add_argument('--chroms', type=str, nargs="+", metavar='TEXT',
+                        help='One or more chromosomes (reference fasta headers) to restrict the search to. (default: use all chromosomes)')
+    parser.add_argument('--pos', type=int, nargs=2, metavar='INT', default=None,
+                        help='The range of indexes (1-based) of positions in the reference sequences to search. (default: search whole chromosome)')
     parser.add_argument('--min_samples', type=int, default=5, metavar='INT',
                         help='The number of samples with acceptable data (see `--min_reads`) each group must have for a given variant. (default: %(default)s)')
     parser.add_argument('--min_reads', type=int, default=10, metavar='INT',
@@ -931,7 +935,7 @@ def parse_command_line_args():
     return args
 
 
-def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=1000):
+def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=1000, contig_subset=None, pos_subset=None):
     """Supply iterators for contigs/scaffolds/chormosomes in a VCF file.
 
     Parameters
@@ -956,12 +960,24 @@ def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=
             logger.info(f'Creating index file  "{tbi_path}"')
             pysam.tabix_index(path, preset='vcf', keep_original=True)
             index = tbi_path
+    # Reduce chunk size if too big for custom position range
+    if pos_subset is not None:
+        pos_length = max(pos_subset) - min(pos_subset) + 1
+        if pos_length < chunk_size:
+            chunk_size = pos_length
     # Split contigs into chunks for processing
     index_handle = pysam.TabixFile(filename=path, index=index)
     output = []
     for contig in index_handle.contigs:
-        length = len(reference[contig])
-        for start in range(0, length, chunk_size):
+        if contig_subset is not None and contig not in contig_subset:
+            continue
+        if pos_subset is None:
+            search_start = 0
+            search_end = len(reference[contig])
+        else:
+            search_start = min(pos_subset) - 1
+            search_end = max(pos_subset)
+        for start in range(search_start, search_end, chunk_size):
             end = start + chunk_size + flank_size
             if start > flank_size:
                 start -= flank_size
@@ -1219,7 +1235,8 @@ def run_all():
     # Prepare input data
     reference = _parse_reference(args.reference)
     groups = _parse_group_data(args.metadata, groups=args.groups, sample_col=args.sample_col, group_col=args.group_col)
-    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=500000, flank_size=1000) #TODO base on amplicon size, need to add to args
+    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=500000, flank_size=1000,
+                               contig_subset=args.chroms, pos_subset=args.pos) #TODO base on amplicon size, need to add to args
     search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'tm',
                         'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases')
     search_args = {k: v for k, v in vars(args).items() if k in search_arg_names}
