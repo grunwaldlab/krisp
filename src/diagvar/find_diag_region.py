@@ -530,7 +530,9 @@ def run_primer3(template, target_start, target_len,
                 gc=(40, 70),
                 amp_size=(80, 300),
                 primer_size=(25, 35),
-                max_sec_tm=40):
+                max_sec_tm=40,
+                gc_clamp=1,
+                max_end_gc=4):
     if options is None:
         global_options = {
             'PRIMER_TASK': 'generic',
@@ -556,6 +558,8 @@ def run_primer3(template, target_start, target_len,
             'PRIMER_PAIR_MAX_COMPL_END_TH': max_sec_tm,  # primer heterodimers
             'PRIMER_MAX_HAIRPIN_TH': max_sec_tm,  # hairpins
             'PRIMER_PRODUCT_SIZE_RANGE': [amp_size],
+            'PRIMER_GC_CLAMP': gc_clamp,
+            'PRIMER_MAX_END_GC': max_end_gc,
         }
     else:
         global_options = parse_primer3_settings(options)
@@ -686,6 +690,8 @@ def find_diag_region(variants,
                      amp_size=(80, 300),
                      primer_size=(25,35),
                      max_sec_tm = 40,
+                     gc_clamp=1,
+                     max_end_gc=4,
                      snp_offset=2,
                      offset_left=0,
                      offset_right=2):
@@ -864,7 +870,9 @@ def find_diag_region(variants,
                              gc=gc,
                              amp_size=amp_size,
                              primer_size=primer_size,
-                             max_sec_tm=max_sec_tm)
+                             max_sec_tm=max_sec_tm,
+                             gc_clamp=gc_clamp,
+                             max_end_gc=max_end_gc)
 
         if p3_out['PRIMER_PAIR_NUM_RETURNED'] == 0:
             region.type = 'No primers'
@@ -930,6 +938,10 @@ def parse_command_line_args():
                         help='The minimum and maximum size of the primers. (default: %(default)s)')
     parser.add_argument('--max_sec_tm', type=int, default=40, metavar='INT',
                         help='The maximum melting temperature of any secondary structures when searching for primers, including hetero/homo dimers and hairpins. (default: %(default)s)')
+    parser.add_argument('--gc_clamp', type=int, default=1, metavar='INT',
+                        help="Require the specified number of consecutive Gs and Cs at the 3' end of both the left and right primer. (default: %(default)s)")
+    parser.add_argument('--max_end_gc', type=int, default=4, metavar='INT',
+                        help="The maximum number of Gs or Cs allowed in the last five 3' bases of a left or right primer. (default: %(default)s)")
     args = parser.parse_args()
 
     return args
@@ -1238,7 +1250,7 @@ def run_all():
     contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=500000, flank_size=1000,
                                contig_subset=args.chroms, pos_subset=args.pos) #TODO base on amplicon size, need to add to args
     search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'tm',
-                        'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases')
+                        'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases', 'gc_clamp', 'max_end_gc')
     search_args = {k: v for k, v in vars(args).items() if k in search_arg_names}
 
     if args.vcf != "-" and args.cores > 1:
