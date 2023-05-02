@@ -187,7 +187,7 @@ class Amplicon:
         # First set the sequence
         fields = [self.primer, self.diagnostic, self.reverse]
 
-        # Now add the tags as ';' seperated values
+        # Now add the tags as ';' separated values
         if len(self.labels) != 0:
             fields.append(self._labelsToString())
 
@@ -365,7 +365,7 @@ class ConservedEndAmplicons:
         return diags
 
     def makeBracket(self):
-        """ Make graphical braket to output with alignment """
+        """ Make graphical bracket to output with alignment """
         # Get start and end positions of diagnostic sequences
         start = self.primerLength()
         end = start + self.diagnosticLength()

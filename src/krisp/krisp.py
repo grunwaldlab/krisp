@@ -209,7 +209,7 @@ def main():
             # Set diagnostic length
             args.diagnostic = (args.amplicon - args.conserved_left - args.conserved_right)
         else:
-            print("ERROR: Cound not deduce input parameters", file=sys.stderr)
+            print("ERROR: Could not deduce input parameters", file=sys.stderr)
             parser.print_help(sys.stderr)
             sys.exit(1)
     elif args.diagnostic is not None:
@@ -222,11 +222,11 @@ def main():
             # Set diagnostic length
             args.amplicon = args.diagnostic + args.conserved_left + args.conserved_right
         else:
-            print("ERROR: Cound not deduce input parameters", file=sys.stderr)
+            print("ERROR: Could not deduce input parameters", file=sys.stderr)
             parser.print_help(sys.stderr)
             sys.exit(1)
     else:
-        print("ERROR: Cound not deduce input parameters", file=sys.stderr)
+        print("ERROR: Could not deduce input parameters", file=sys.stderr)
         parser.print_help(sys.stderr)
         sys.exit(1)            
 

@@ -122,7 +122,7 @@ def sortInPlace(filename, np=None, mem=None, cols=None):
 class kstream:
     """
     A highly flexible class to read and parse kmers from a fasta file. The
-    class operates on the idea if filtering and manipulating kmer streams. The
+    class operates on the idea of filtering and manipulating kmer streams. The
     input fasta file is converted to a kmer stream which is then manipulated
     based on the passed arguments.
     """
@@ -161,7 +161,7 @@ class kstream:
             Map lowercase characters to uppercase in all kmers.
 
         expandiupac : bool (default False)
-            Expand any IUPAC characters and yield each as a seperate kmer.
+            Expand any IUPAC characters and yield each as a separate kmer.
 
         split : [int]
             A list of positions to split the resulting kmers on to create a

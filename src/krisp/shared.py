@@ -174,7 +174,7 @@ def splitFilePtrs(filename, num_sections):
             if approx_end > file_size:
                 approx_end = file_size
 
-            # Move fileptr to approx end and then to sart of line
+            # Move fileptr to approx end and then to start of line
             fptr.seek(approx_end)
 
             # Readline to get to next full line

@@ -1226,6 +1226,8 @@ def mp_listener(result_queue, log_queue, args):
                     logger.handle(logs)
                 except queue.Empty:
                     break
+    total_vars = sum(writer.variant_counts.values()) + sum(writer.group_counts.values())
+    logger.info("Total variants scanned: " + str(total_vars))
 
 
 def mp_worker_init(event):
@@ -1294,6 +1296,8 @@ def run_all():
                 for result in report_diag_region(args.vcf, contig, groups, reference, args,
                                                  **search_args):
                     writer.write(result)
+        total_vars = sum(writer.variant_counts.values()) + sum(writer.group_counts.values())
+        logger.info("Total variants scanned: " + str(total_vars))
 
 
 def main():

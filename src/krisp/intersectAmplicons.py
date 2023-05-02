@@ -109,7 +109,7 @@ def mergeKmerParallel(filename0, filename1, output,
     ----------
     filename0 : str
         Name of first kmer file to merge
-    filenam1 : str
+    filename1 : str
         Name of second kmer file to merge
     output : str
         Name of output file to write
@@ -121,7 +121,7 @@ def mergeKmerParallel(filename0, filename1, output,
     None
         Output file is written, None is returned
     """
-    # Start by making a list of tempory files
+    # Start by making a list of temporary files
     tmp_files = [tmpFile(workdir) for i in range(parallel)]
 
     # Get the start and end iteration points for filename0
