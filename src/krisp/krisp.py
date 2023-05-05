@@ -6,7 +6,7 @@ import multiprocessing
 import subprocess
 from kstream import kstream
 from .intersectAmplicons import mergeFiles
-from .outputAlignments import printAlignmentsParallel, writeAlignmentsParallel
+from .outputAlignments import render_output
 from .shared import *
 from colorama import Fore, Back, Style
 from .filterAlignments import filterAlignments
@@ -179,9 +179,14 @@ def main():
             help="Output as dot-based alignments")   
     parser.add_argument(
             "-o",
-            "--output",
+            "--out_align",
             type=str,
-            help="Write results to a file. (gzip supported)")
+            help="Write results as human-readable alignments to a file (gzip supported). Default: print to screen (stdout)")
+    parser.add_argument(
+            "-t",
+            "--out_tsv",
+            type=str,
+            help="Write results to as a TSV (tab-separated value) file (gzip supported). Default: do not write TSV output")
     parser.add_argument(
             "-w",
             "--workdir",
@@ -275,6 +280,7 @@ def main():
             print("Building alignments ... ", end='\n', file=sys.stderr)
 
         # Find diagnostic sets matching this pattern
+        import pdb; pdb.set_trace()
         if (args.amplicon > args.conserved_left + args.conserved_right):
             # Create a frozen set from ingroup names
             ingroup_set = frozenset([simplename(f) for f in args.files])
@@ -289,16 +295,12 @@ def main():
         ingroup = None
         if len(args.outgroup):
             ingroup = [simplename(f) for f in args.files]
-        if args.output is None:
-            found = printAlignmentsParallel(result,
-                                            args.parallel,
-                                            print_block=1000,
-                                            ingroup=ingroup)
-        else:
-            found = writeAlignmentsParallel(result, args.output,
-                                            args.parallel,
-                                            workdir=tmpdir,
-                                            ingroup=ingroup)
+        found = render_output(result,
+                              output=args.out_align,
+                              cores=args.parallel,
+                              print_block=1000,
+                              ingroup=ingroup)
+
 
         # Print end message
         if args.verbose:
