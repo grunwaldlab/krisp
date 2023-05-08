@@ -1,3 +1,140 @@
+import pdb
+import sys
+import re
+import primer3
+from statistics import mean
+from Bio.Data import IUPACData
+
+from pudb.remote import set_trace
+
+UNKNOWN_CHAR = "?"
+iupac_key = {tuple((x for x in sorted(v))): k for k, v in
+             IUPACData.ambiguous_dna_values.items()}
+iupac_key[(UNKNOWN_CHAR,)] = 'N'
+
+
+class ForkedPdb(pdb.Pdb):
+    """A Pdb subclass that may be used
+    from a forked multiprocessing child
+
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
+
+def collapse_to_iupac(seqs):
+    """Combine sequences into a consensus using IUPAC ambiguity codes
+
+    Parameters:
+    -----------
+    seqs : list of str
+        The sequences to combine.
+
+    Returns
+    -------
+    str
+        The combined sequence
+    """
+    seq_lens = [len(x) for x in seqs]
+    max_len = max(seq_lens)
+    if len(set(seq_lens)) != 1:  # TODO: replace with alignment
+        return '-' * max_len
+    output = []
+    for i in range(max_len):
+        column = {s[i] for s in seqs}
+        if "*" in column or "N" in column or UNKNOWN_CHAR in column:
+            output.append('N')
+        else:
+            output.append(iupac_key[tuple(sorted(column))])
+    return "".join(output)
+
+
+def parse_primer3_settings(file_path):
+    """
+    Reads primer3 BoulderIO format, assuming only global settings (starts with PRIMER_),
+    and returns a dict in the format used by primer3-py.
+    """
+    def to_number_if_can(x):
+        try:
+            if int(float(x)) == float(x) and '.' not in x:
+                return int(x)
+            else:
+                return float(x)
+        except ValueError:
+            return x
+
+    with open(file_path) as handle:
+        options = dict([tuple(l.strip().split('=')) for l in handle.readlines()])
+        for opt, val in options.items():
+            if ' ' in val or ';' in val:
+                val = re.split('[ ;]+', val)
+                val = [to_number_if_can(v) for v in val]
+                if ',' in val or '-' in val[0]:
+                    val = [[to_number_if_can(x) for x in re.split('[,-]+', v)] for v in val]
+            elif ',' in val or '-' in val:
+                val = re.split('[,\-]+', val)
+                val = [to_number_if_can(v) for v in val]
+            else:
+                val = to_number_if_can(val)
+            options[opt] = val
+    return options
+
+
+def run_primer3(template, target_start, target_len,
+                options=None,
+                tm=(53, 68),
+                gc=(40, 70),
+                amp_size=(80, 300),
+                primer_size=(25, 35),
+                max_sec_tm=40,
+                gc_clamp=1,
+                max_end_gc=4):
+    if options is None:
+        global_options = {
+            'PRIMER_TASK': 'generic',
+            'PRIMER_PICK_LEFT_PRIMER': 1,  # 1 == True
+            # 'PRIMER_PICK_INTERNAL_OLIGO': 1,  # 1 == True
+            'PRIMER_PICK_RIGHT_PRIMER': 1,  # 1 == True
+            'PRIMER_LIBERAL_BASE': 1,  # 1 == True
+            'PRIMER_OPT_SIZE': mean(primer_size),
+            'PRIMER_MIN_SIZE': primer_size[0],
+            'PRIMER_MAX_SIZE': primer_size[1],
+            # 'PRIMER_INTERNAL_MAX_SIZE': len(crrna_seq),
+            'PRIMER_OPT_TM': mean(tm),
+            'PRIMER_MIN_TM': tm[0],
+            'PRIMER_MAX_TM': tm[1],
+            'PRIMER_MIN_GC': gc[0],
+            'PRIMER_MAX_GC': gc[1],
+            'PRIMER_MAX_POLY_X': 4,  # The maximum allowable length of a mononucleotide repeat
+            'PRIMER_MAX_NS_ACCEPTED': 0,  # The maximum number of Ns
+            'PRIMER_THERMODYNAMIC_OLIGO_ALIGNMENT': 1,  # 1 == True
+            'PRIMER_MAX_SELF_ANY_TH': max_sec_tm,  # describes the tendency of a primer to bind to itself
+            'PRIMER_MAX_SELF_END_TH': max_sec_tm,  # 3' binding to itself (primer dimers)
+            'PRIMER_PAIR_MAX_COMPL_ANY_TH': max_sec_tm,  # the tendency of the left primer to bind to the right primer
+            'PRIMER_PAIR_MAX_COMPL_END_TH': max_sec_tm,  # primer heterodimers
+            'PRIMER_MAX_HAIRPIN_TH': max_sec_tm,  # hairpins
+            'PRIMER_PRODUCT_SIZE_RANGE': [amp_size],
+            'PRIMER_GC_CLAMP': gc_clamp,
+            'PRIMER_MAX_END_GC': max_end_gc,
+        }
+    else:
+        global_options = parse_primer3_settings(options)
+
+    p3_output = primer3.bindings.designPrimers(
+        {
+            'SEQUENCE_TEMPLATE': "".join(template),
+            # 'SEQUENCE_INTERNAL_OLIGO': "".join(crrna_seq),
+            'SEQUENCE_TARGET': [target_start, target_len]
+        },
+        global_options
+    )
+    return p3_output
+
+
 class Amplicon:
     def __init__(self, primer, diagnostic, reverse, *labels):
         """ Store values """
@@ -211,6 +348,7 @@ class ConservedEndAmplicons:
         self.ingroup = None
         if ingroup is not None:
             self.ingroup = frozenset(ingroup)
+        self.p3 = None
 
     def labels(self):
         """ Returns the set of labels contained in this alignment """
@@ -388,7 +526,18 @@ class ConservedEndAmplicons:
         if grouping is not None:
             self.ingroup = frozenset(grouping)
 
-    def __str__(self):
+    def ingroup_consensus(self):
+        forward_seq = collapse_to_iupac([x.primer for x in self.amplicons])
+        diag_seq    = collapse_to_iupac([x.diagnostic for x in self.amplicons])
+        reverse_seq = collapse_to_iupac([x.reverse for x in self.amplicons])
+        return {'forward' : forward_seq, 'diagnostic' : diag_seq, 'reverse' : reverse_seq}
+
+    def find_primers(self):
+        template = "".join(self.ingroup_consensus().values())
+        self.p3 = run_primer3(template, target_start=self.primerLength(), target_len=self.diagnosticLength())
+        set_trace(term_size=(80, 60))
+
+    def render_alignment(self):
         """ Return a string representation of an alignment """
         # Try splitting amplicons based on ingroup, outgroup
         result = []
@@ -425,6 +574,13 @@ class ConservedEndAmplicons:
 
         # Join result with newlines and return
         return '\n'.join(result)
+
+    def render_tsv(self):
+        output = ",".join(self.ingroup_consensus().values())
+        return output
+
+    def __str__(self):
+        return self.render_alignment()
 
     def __len__(self):
         """ Return number of alignments """

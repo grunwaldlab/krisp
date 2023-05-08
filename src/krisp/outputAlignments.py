@@ -5,46 +5,74 @@ import os
 import sys
 from .shared import *
 from contextlib import contextmanager
+import pdb
+
+from pudb.remote import set_trace
 
 
 @contextmanager
 def stream_writer(file_path=None, default_stream=sys.stdout):
-    file_handle = default_stream if file_path is None else open(file_path, "w")
+    file_handle = default_stream if file_path is None else open(file_path, "a")
     yield file_handle
-    if file_path is not None:
+    if file_path is not None and file_handle is not None:
         file_handle.close()
 
 
-def safe_print(alignments, output_stream, counter, lock):
+def safe_print(alignments, tsv_rows, out_align, out_tsv, counter, lock):
     """ Function to safely print alignments to the terminal in parallel """
     # Acquire lock
     with lock:
         # Iterate through alignments and print, increment counter
-        for align in alignments:
-            print(align, file=output_stream, flush=True)
-            counter.value += 1
+        if out_align is not None and out_tsv is not None:
+            for align, row in zip(alignments, tsv_rows):
+                print(align, file=out_align, flush=True)
+                print(row, file=out_tsv, flush=True)
+                counter.value += 1
+        elif out_tsv is not None:
+            for row in tsv_rows:
+                print(row, file=out_tsv, flush=True)
+                counter.value += 1
+        elif out_align is not None:
+            for align in alignments:
+                print(align, file=out_align, flush=True)
+                counter.value += 1
 
 
-def render_output_part(kmerfile, output, counter, lock,
-                       start=None, end=None, print_block=10, ingroup=None):
+def render_output_part(kmerfile, out_align, out_tsv, counter, lock,
+                       start=None, end=None, print_block=100, ingroup=None, find_primers=False):
     """ Helper function to render the contents of a part of the kmer file """
     # Get alignment stream
     alignments = alignmentStream(kmerfile, start, end, ingroup)
     alignments_to_print = []
-    with stream_writer(output, sys.stdout) as output_stream:
+    row_to_print = []
+    print_block_counter = 0
+    with stream_writer(out_align, None) as out_align_stream,\
+         stream_writer(out_tsv, sys.stdout) as out_tsv_stream:
         for alignment in alignments:
+            # Run primer3 (NOTE: ideally this would run on its own step in krisp.main, not here)
+            if find_primers:
+                if not alignment.find_primers():
+                    continue
             # Add to alignments list
-            alignments_to_print.append(str(alignment))
+            if out_align_stream is not None:
+                alignments_to_print.append(alignment.render_alignment())
+            # Add TSV rows to list
+            if out_tsv_stream is not None:
+                row_to_print.append(alignment.render_tsv())
+            #set_trace(term_size=(80, 60))
             # Print
-            if len(alignments_to_print) >= print_block:
+            print_block_counter += 1
+            if print_block_counter >= print_block:
                 # Print alignments
-                safe_print(alignments_to_print, output_stream, counter, lock)
+                safe_print(alignments_to_print, row_to_print, out_align_stream, out_tsv_stream, counter, lock)
                 alignments_to_print = []
-        if len(alignments_to_print):
-            safe_print(alignments_to_print, output_stream, counter, lock)
+                row_to_print = []
+                print_block_counter = 0
+        if print_block_counter > 0:
+            safe_print(alignments_to_print, row_to_print, out_align_stream, out_tsv_stream, counter, lock)
 
 
-def render_output(kmerfile, output=sys.stdout, cores=1, print_block=10, ingroup=None):
+def render_output(kmerfile, out_align=None, out_tsv=sys.stdout, cores=1, print_block=10, ingroup=None, find_primers=False):
     """ Function to print alignments from a file in parallel
 
     Parameters
@@ -53,8 +81,11 @@ def render_output(kmerfile, output=sys.stdout, cores=1, print_block=10, ingroup=
     kmerfile : str
         The input kmerfile to render
 
-    output : str or stream
-        The path to the output file or stream to write to (e.g. sys.stdout)
+    out_align : str or stream
+        The path to the alignment output file or stream to write to (e.g. sys.stdout)
+
+    out_tsv : str or stream
+        The path to the TSV output file or stream to write to (e.g. sys.stdout)
 
     cores : int
         The number of processors to use
@@ -82,7 +113,7 @@ def render_output(kmerfile, output=sys.stdout, cores=1, print_block=10, ingroup=
     # Create a list of job args
     job_args = []
     for start, end in fptr_start_end:
-        job_args.append((kmerfile, output, counter, lock, start, end, print_block, ingroup))
+        job_args.append((kmerfile, out_align, out_tsv, counter, lock, start, end, print_block, ingroup, find_primers))
 
     # Start a group of processes
     processes = []

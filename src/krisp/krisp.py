@@ -127,7 +127,6 @@ def main():
     """ Parse command line args """
     parser = argparse.ArgumentParser(
             description="Find diagnostic alignments for a set of fasta files",
-            epilog="Hope this helped. GET BACK TO WORK!",
             prog="krisp",
             formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument(
@@ -181,16 +180,21 @@ def main():
             "-o",
             "--out_align",
             type=str,
-            help="Write results as human-readable alignments to a file (gzip supported). Default: print to screen (stdout)")
+            help="Write results as human-readable alignments to a file (gzip supported). Default: do not write alignment output")
     parser.add_argument(
             "-t",
             "--out_tsv",
             type=str,
-            help="Write results to as a TSV (tab-separated value) file (gzip supported). Default: do not write TSV output")
+            help="Write results to as a TSV (tab-separated value) file (gzip supported). Default: print to screen (stdout)")
     parser.add_argument(
             "-w",
             "--workdir",
             type=str,
+            help="Work directory to place temporary files")
+    parser.add_argument(
+            "-p",
+            "--primer3",
+            action=argparse.BooleanOptionalAction,
             help="Work directory to place temporary files")
     parser.add_argument(
             "--verbose",
@@ -280,7 +284,6 @@ def main():
             print("Building alignments ... ", end='\n', file=sys.stderr)
 
         # Find diagnostic sets matching this pattern
-        import pdb; pdb.set_trace()
         if (args.amplicon > args.conserved_left + args.conserved_right):
             # Create a frozen set from ingroup names
             ingroup_set = frozenset([simplename(f) for f in args.files])
@@ -296,10 +299,12 @@ def main():
         if len(args.outgroup):
             ingroup = [simplename(f) for f in args.files]
         found = render_output(result,
-                              output=args.out_align,
+                              out_align=args.out_align,
+                              out_tsv=args.out_tsv,
                               cores=args.parallel,
                               print_block=1000,
-                              ingroup=ingroup)
+                              ingroup=ingroup,
+                              find_primers=args.primer3)
 
 
         # Print end message

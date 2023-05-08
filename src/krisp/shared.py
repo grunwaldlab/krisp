@@ -438,6 +438,7 @@ def writeAlignmentStream(stream, output, mode="w"):
     writeAmpliconStream(ampl_stream, output, mode=mode)
 
 
+
 def alignmentStream(kmerfile, start=None, end=None, ingroup=None):
     """ Read a kmer file from start to end and yield alignments
 
@@ -472,3 +473,5 @@ def alignmentStream(kmerfile, start=None, end=None, ingroup=None):
     # Print last alignment if not empty
     if len(alignment):
         yield alignment
+
+
