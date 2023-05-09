@@ -129,77 +129,50 @@ def main():
             description="Find diagnostic alignments for a set of fasta files",
             prog="krisp",
             formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument(
-            "files",
-            nargs="+",
-            type=str,
-            help="Fasta file to read. .gz, .bz2")
-    parser.add_argument(
-            "--outgroup",
-            nargs="*",
-            type=str,
-            default=[],
-            help="Outgroup Fasta files. To be amplified, but not detected")
-    parser.add_argument(
-            "-c",
-            "--conserved",
-            type=int,
-            help="Length of conserved regions on ends of amplicon")
-    parser.add_argument(
-            "--conserved-left",
-            type=int,
-            help="Length of conserved region on left of amplicon")
-    parser.add_argument(
-            "--conserved-right",
-            type=int,
-            help="Length of conserved region on right of amplicon")
-    parser.add_argument(
-            "-d",
-            "--diagnostic",
-            type=int,
-            help="Diagnostic region length for amplicon")
-    parser.add_argument(
-            "-a",
-            "--amplicon",
-            type=int,
-            help="Total amplicon length")
-    parser.add_argument(
-            "--omit-soft",
-            action="store_true",
-            help="Omit softmasked nucleotides") 
-    parser.add_argument(
-            "--parallel",
-            type=int,
-            default=1,
-            help="Total number of processors to utilize: default=1")
-    parser.add_argument(
-            "--dot-alignment",
-            action="store_true",
-            help="Output as dot-based alignments")   
-    parser.add_argument(
-            "-o",
-            "--out_align",
-            type=str,
-            help="Write results as human-readable alignments to a file (gzip supported). Default: do not write alignment output")
-    parser.add_argument(
-            "-t",
-            "--out_csv",
-            type=str,
-            help="Write results to as a CSV (tab-separated value) file (gzip supported). Default: print to screen (stdout)")
-    parser.add_argument(
-            "-w",
-            "--workdir",
-            type=str,
-            help="Work directory to place temporary files")
-    parser.add_argument(
-            "-p",
-            "--primer3",
-            action=argparse.BooleanOptionalAction,
-            help="Work directory to place temporary files")
-    parser.add_argument(
-            "--verbose",
-            action="store_true",
-            help="Print runtime information to sys.stderr")
+    parser.add_argument("files", nargs="+", type=str, metavar='PATH',
+                        help="Fasta file to read. .gz, .bz2")
+    parser.add_argument("--outgroup", nargs="*", type=str, default=[], metavar='PATH',
+                        help="Outgroup Fasta files. To be amplified, but not detected")
+    parser.add_argument("-c", "--conserved", type=int, metavar='INT',
+                        help="Length of conserved regions on ends of amplicon")
+    parser.add_argument("--conserved-left", type=int, metavar='INT',
+                        help="Length of conserved region on left of amplicon")
+    parser.add_argument("--conserved-right", type=int, metavar='INT',
+                        help="Length of conserved region on right of amplicon")
+    parser.add_argument("-d", "--diagnostic", type=int, metavar='INT',
+                        help="Diagnostic region length for amplicon")
+    parser.add_argument("-a", "--amplicon", type=int, metavar='INT',
+                        help="Total amplicon length")
+    parser.add_argument("--omit-soft", action="store_true",
+                        help="Omit softmasked nucleotides")
+    parser.add_argument("--cores", type=int, default=1, metavar='INT',
+                        help="Total number of processors to utilize. (default: %(default)s)")
+    parser.add_argument("--dot-alignment", action="store_true",
+                        help="Output as dot-based alignments")
+    parser.add_argument("-o", "--out_align", type=str, metavar='PATH',
+                        help="Write results as human-readable alignments to a file (gzip supported). (default: do not write alignment output)")
+    parser.add_argument("-t", "--out_csv", type=str, metavar='PATH',
+                        help="Write results to as a CSV (tab-separated value) file (gzip supported). (default: print to screen (stdout))")
+    parser.add_argument("-w", "--workdir", type=str, metavar='PATH',
+                        help="Work directory to place temporary files")
+    parser.add_argument("-p", "--primer3", action=argparse.BooleanOptionalAction,
+                        help="Work directory to place temporary files")
+    parser.add_argument('--tm', type=int, nargs=2, metavar='INT', default=[53, 68],
+                        help='The minimum and maximum melting temperature when searching for primers. (default: %(default)s)')
+    parser.add_argument('--gc', type=int, nargs=2, metavar='INT', default=[40, 70],
+                        help='The minimum and maximum GC percentage when searching for primers. (default: %(default)s)')
+    parser.add_argument('--amp_size', type=int, nargs=2, metavar='INT', default=[70, 150],
+                        help='The minimum and maximum size of the amplicon when searching for primers. (default: %(default)s)')
+    parser.add_argument('--primer_size', type=int, nargs=2, metavar='INT', default=[25, 35],
+                        help='The minimum and maximum size of the primers. (default: %(default)s)')
+    parser.add_argument('--max_sec_tm', type=int, default=40, metavar='INT',
+                        help='The maximum melting temperature of any secondary structures when searching for primers, including hetero/homo dimers and hairpins. (default: %(default)s)')
+    parser.add_argument('--gc_clamp', type=int, default=1, metavar='INT',
+                        help="Require the specified number of consecutive Gs and Cs at the 3' end of both the left and right primer. (default: %(default)s)")
+    parser.add_argument('--max_end_gc', type=int, default=4, metavar='INT',
+                        help="The maximum number of Gs or Cs allowed in the last five 3' bases of a left or right primer. (default: %(default)s)")
+    parser.add_argument("--verbose", action="store_true",
+                        help="Print runtime information to sys.stderr")
     args = parser.parse_args(sys.argv[1:])
 
     # Set conserved left, conserved right and amplicon
@@ -242,6 +215,11 @@ def main():
     # Set output format
     ConservedEndAmplicons.ENABLE_DOT = args.dot_alignment
 
+    # Set Primer3 parameters (NOTE: should be passed a different way, but this was easy)
+    primer3_arg_names = ('tm', 'gc', 'primer_size', 'amp_size', 'max_sec_tm',
+                         'min_bases', 'gc_clamp', 'max_end_gc')
+    ConservedEndAmplicons.P3_ARGS = {k: v for k, v in vars(args).items() if k in primer3_arg_names}
+
     # Create a temporary directory to work in
     with tempfile.TemporaryDirectory(dir=args.workdir) as tmpdir:
         # Time if verbose
@@ -265,9 +243,9 @@ def main():
             kmer_files.append(kmer_name)
 
         # Get sorted kmers
-        if args.parallel > 1:
+        if args.cores > 1:
             sortedKmersParallel(input_files, kmer_files, args.amplicon,
-                                args.conserved_left, args.conserved_right, args.parallel,
+                                args.conserved_left, args.conserved_right, args.cores,
                                 verbose=args.verbose, omit=args.omit_soft)
         else:
             sortedKmersSerial(input_files, kmer_files, args.amplicon,
@@ -276,12 +254,12 @@ def main():
 
         # Merge kmer files into a single file
         result = f"{tmpdir}/merged_file.txt"
-        mergeFiles(kmer_files, result, args.parallel, tmpdir, args.verbose)
+        mergeFiles(kmer_files, result, args.cores, tmpdir, args.verbose)
 
         # Print start of alignment building
         if args.verbose:
             print(file=sys.stderr)
-            print("Building alignments ... ", end='\n', file=sys.stderr)
+            print("Filtering for diagnostic regions ... ", end='\n', file=sys.stderr)
 
         # Find diagnostic sets matching this pattern
         if (args.amplicon > args.conserved_left + args.conserved_right):
@@ -293,6 +271,11 @@ def main():
             # Set filtered result as result
             result = filtered_result
 
+        # Print start of alignment building
+        if args.verbose:
+            print(file=sys.stderr)
+            print("Rendering output ... ", end='\n', file=sys.stderr)
+
         # Print alignments
         found = None
         ingroup = None
@@ -301,7 +284,7 @@ def main():
         found = render_output(result,
                               out_align=args.out_align,
                               out_csv=args.out_csv,
-                              cores=args.parallel,
+                              cores=args.cores,
                               print_block=1000,
                               ingroup=ingroup,
                               find_primers=args.primer3)
@@ -311,7 +294,7 @@ def main():
         if args.verbose:
             # Get end time
             end_t = time.time()
-            end_message = (f"=> Found {found:,} alignments"
+            end_message = (f"=> Found {found:,} regions"
                            f" in {prettyTime(end_t-start_t)}")
             print(Fore.GREEN + end_message + Style.RESET_ALL, file=sys.stderr)
 

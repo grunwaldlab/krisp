@@ -39,8 +39,8 @@ def _format_p3_output(p3_out):
 
 
 @contextmanager
-def stream_writer(file_path=None, default_stream=sys.stdout):
-    file_handle = default_stream if file_path is None else open(file_path, "a")
+def stream_writer(file_path=None, default_stream=sys.stdout, mode="a"):
+    file_handle = default_stream if file_path is None else open(file_path, mode)
     yield file_handle
     if file_path is not None and file_handle is not None:
         file_handle.close()
@@ -57,8 +57,6 @@ def safe_print(alignments, csv_rows, out_align, out_csv, counter, lock, find_pri
                 print(row, file=out_csv, flush=True)
                 counter.value += 1
         elif out_csv is not None:
-            if counter.value == 0:
-                _render_csv_header(out_csv, primer3=find_primers)
             for row in csv_rows:
                 print(row, file=out_csv, flush=True)
                 counter.value += 1
@@ -132,6 +130,10 @@ def render_output(kmerfile, out_align=None, out_csv=sys.stdout, cores=1, print_b
         The number of alignments written
 
     """
+    # Print CSV header if needed
+    if out_csv is not None:
+        with stream_writer(out_csv, sys.stdout, mode="w") as out_csv_stream:
+            _render_csv_header(out_csv_stream, primer3=find_primers)
 
     # Get the start and end iteration points for kmerfile
     fptr_start_end = list(splitFilePtrs(kmerfile, num_sections=cores))

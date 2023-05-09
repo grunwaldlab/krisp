@@ -359,6 +359,8 @@ class ConservedEndAmplicons:
     """
     # Class level variables
     ENABLE_DOT = False
+    P3_ARGS = {}
+
     def __init__(self, ingroup=None):
         """ Store data as a list of amplicons """
         self.amplicons = []
@@ -551,7 +553,8 @@ class ConservedEndAmplicons:
 
     def find_primers(self):
         template = "".join(self.ingroup_consensus().values())
-        self.p3 = run_primer3(template, target_start=self.primerLength(), target_len=self.diagnosticLength())
+        self.p3 = run_primer3(template, target_start=self.primerLength(),
+                              target_len=self.diagnosticLength(), **ConservedEndAmplicons.P3_ARGS)
         return self.p3['PRIMER_PAIR_NUM_RETURNED'] != 0
 
     def render_alignment(self):
