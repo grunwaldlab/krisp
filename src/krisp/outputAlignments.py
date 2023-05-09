@@ -131,9 +131,12 @@ def render_output(kmerfile, out_align=None, out_csv=sys.stdout, cores=1, print_b
 
     """
     # Print CSV header if needed
-    if out_csv is not None:
-        with stream_writer(out_csv, sys.stdout, mode="w") as out_csv_stream:
-            _render_csv_header(out_csv_stream, primer3=find_primers)
+    with stream_writer(out_csv, sys.stdout, mode="w") as out_csv_stream:
+        _render_csv_header(out_csv_stream, primer3=find_primers)
+
+    # Print alignment header if needed
+    if isinstance(out_align, str) and os.path.isfile(out_align):
+        os.remove(out_align)
 
     # Get the start and end iteration points for kmerfile
     fptr_start_end = list(splitFilePtrs(kmerfile, num_sections=cores))

@@ -592,6 +592,29 @@ class ConservedEndAmplicons:
             # Add diagnostic bracket to result
             result.append(self.makeBracket())
 
+        # Add primer 3 primer annotations
+        if self.p3 is not None:
+            forward_seq = self.p3['PRIMER_LEFT_0_SEQUENCE']
+            reverse_seq = self.p3['PRIMER_RIGHT_0_SEQUENCE']
+            forward_start = self.p3['PRIMER_LEFT_0'][0]
+            reverse_start = self.p3['PRIMER_RIGHT_0'][0] - self.p3['PRIMER_RIGHT_0'][1]
+            forward_annot = '└' + 'Forward'.center(len(forward_seq) - 2, '─') + '┘'
+            reverse_annot = '└' + 'Reverse'.center(len(reverse_seq) - 2, '─') + '┘'
+            text_out = ' ' * (forward_start) + \
+                       forward_annot + \
+                       ' ' * (reverse_start - forward_start - len(forward_seq) + 1) + \
+                       reverse_annot
+            if ConservedEndAmplicons.ENABLE_DOT:
+                result.append(text_out)
+            else:
+                result[-1] = result[-1].ljust(len(text_out))
+                result[-1] = "".join([annot if bracket == ' ' else bracket
+                                      for bracket, annot in zip(result[-1], text_out)])
+            #set_trace(term_size=(80, 60))
+
+        # Add newline to separate inputs
+        result[-1] += '\n'
+
         # Join result with newlines and return
         return '\n'.join(result)
 
