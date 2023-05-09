@@ -12,6 +12,20 @@ iupac_key = {tuple((x for x in sorted(v))): k for k, v in
              IUPACData.ambiguous_dna_values.items()}
 iupac_key[(UNKNOWN_CHAR,)] = 'N'
 
+primer3_col_names = [
+    'PRIMER_PAIR_0_PRODUCT_SIZE',
+    'PRIMER_PAIR_0_PENALTY',
+    'PRIMER_LEFT_0_SEQUENCE', 'PRIMER_RIGHT_0_SEQUENCE',
+    'PRIMER_LEFT_0_PENALTY', 'PRIMER_RIGHT_0_PENALTY',
+    'PRIMER_LEFT_0_TM', 'PRIMER_RIGHT_0_TM',
+    'PRIMER_LEFT_0_GC_PERCENT', 'PRIMER_RIGHT_0_GC_PERCENT',
+    'PRIMER_LEFT_0_SELF_ANY_TH', 'PRIMER_RIGHT_0_SELF_ANY_TH',
+    'PRIMER_LEFT_0_SELF_END_TH', 'PRIMER_RIGHT_0_SELF_END_TH',
+    'PRIMER_LEFT_0_HAIRPIN_TH', 'PRIMER_RIGHT_0_HAIRPIN_TH',
+    'PRIMER_LEFT_0_END_STABILITY', 'PRIMER_RIGHT_0_END_STABILITY',
+    'PRIMER_PAIR_0_COMPL_ANY_TH', 'PRIMER_PAIR_0_COMPL_END_TH',
+]
+primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n in primer3_col_names}
 
 class ForkedPdb(pdb.Pdb):
     """A Pdb subclass that may be used
@@ -83,6 +97,9 @@ def parse_primer3_settings(file_path):
             options[opt] = val
     return options
 
+def _format_p3_output(p3_out):
+    """Reformat data for best primer pair for CSV output"""
+    return {primer3_col_key[n]: p3_out[n] for n in primer3_col_names}
 
 def run_primer3(template, target_start, target_len,
                 options=None,
@@ -124,7 +141,7 @@ def run_primer3(template, target_start, target_len,
     else:
         global_options = parse_primer3_settings(options)
 
-    p3_output = primer3.bindings.designPrimers(
+    p3_output = primer3.bindings.design_primers(
         {
             'SEQUENCE_TEMPLATE': "".join(template),
             # 'SEQUENCE_INTERNAL_OLIGO': "".join(crrna_seq),
@@ -535,7 +552,7 @@ class ConservedEndAmplicons:
     def find_primers(self):
         template = "".join(self.ingroup_consensus().values())
         self.p3 = run_primer3(template, target_start=self.primerLength(), target_len=self.diagnosticLength())
-        set_trace(term_size=(80, 60))
+        return self.p3['PRIMER_PAIR_NUM_RETURNED'] != 0
 
     def render_alignment(self):
         """ Return a string representation of an alignment """
@@ -575,9 +592,12 @@ class ConservedEndAmplicons:
         # Join result with newlines and return
         return '\n'.join(result)
 
-    def render_tsv(self):
-        output = ",".join(self.ingroup_consensus().values())
-        return output
+    def render_csv(self, sep=','):
+        output = list(self.ingroup_consensus().values())
+        if self.p3 is not None:
+            output.extend(_format_p3_output(self.p3).values())
+        output = [str(x) for x in output]
+        return sep.join(output)
 
     def __str__(self):
         return self.render_alignment()

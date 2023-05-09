@@ -9,6 +9,34 @@ import pdb
 
 from pudb.remote import set_trace
 
+primer3_col_names = [
+    'PRIMER_PAIR_0_PRODUCT_SIZE',
+    'PRIMER_PAIR_0_PENALTY',
+    'PRIMER_LEFT_0_SEQUENCE', 'PRIMER_RIGHT_0_SEQUENCE',
+    'PRIMER_LEFT_0_PENALTY', 'PRIMER_RIGHT_0_PENALTY',
+    'PRIMER_LEFT_0_TM', 'PRIMER_RIGHT_0_TM',
+    'PRIMER_LEFT_0_GC_PERCENT', 'PRIMER_RIGHT_0_GC_PERCENT',
+    'PRIMER_LEFT_0_SELF_ANY_TH', 'PRIMER_RIGHT_0_SELF_ANY_TH',
+    'PRIMER_LEFT_0_SELF_END_TH', 'PRIMER_RIGHT_0_SELF_END_TH',
+    'PRIMER_LEFT_0_HAIRPIN_TH', 'PRIMER_RIGHT_0_HAIRPIN_TH',
+    'PRIMER_LEFT_0_END_STABILITY', 'PRIMER_RIGHT_0_END_STABILITY',
+    'PRIMER_PAIR_0_COMPL_ANY_TH', 'PRIMER_PAIR_0_COMPL_END_TH',
+]
+primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n in primer3_col_names}
+
+
+def _render_csv_header(stream, primer3=False, out_sep=','):
+    names = ["left_seq", "diag_seq", "right_seq"]
+    if primer3:
+        names.extend([primer3_col_key[n] for n in primer3_col_names])
+    #set_trace(term_size=(80, 60))
+    print(*names, sep=out_sep, file=stream)
+
+
+def _format_p3_output(p3_out):
+    """Reformat data for best primer pair for CSV output"""
+    return {primer3_col_key[n]: p3_out[n] for n in primer3_col_names}
+
 
 @contextmanager
 def stream_writer(file_path=None, default_stream=sys.stdout):
@@ -18,19 +46,21 @@ def stream_writer(file_path=None, default_stream=sys.stdout):
         file_handle.close()
 
 
-def safe_print(alignments, tsv_rows, out_align, out_tsv, counter, lock):
+def safe_print(alignments, csv_rows, out_align, out_csv, counter, lock, find_primers):
     """ Function to safely print alignments to the terminal in parallel """
     # Acquire lock
     with lock:
         # Iterate through alignments and print, increment counter
-        if out_align is not None and out_tsv is not None:
-            for align, row in zip(alignments, tsv_rows):
+        if out_align is not None and out_csv is not None:
+            for align, row in zip(alignments, csv_rows):
                 print(align, file=out_align, flush=True)
-                print(row, file=out_tsv, flush=True)
+                print(row, file=out_csv, flush=True)
                 counter.value += 1
-        elif out_tsv is not None:
-            for row in tsv_rows:
-                print(row, file=out_tsv, flush=True)
+        elif out_csv is not None:
+            if counter.value == 0:
+                _render_csv_header(out_csv, primer3=find_primers)
+            for row in csv_rows:
+                print(row, file=out_csv, flush=True)
                 counter.value += 1
         elif out_align is not None:
             for align in alignments:
@@ -38,7 +68,7 @@ def safe_print(alignments, tsv_rows, out_align, out_tsv, counter, lock):
                 counter.value += 1
 
 
-def render_output_part(kmerfile, out_align, out_tsv, counter, lock,
+def render_output_part(kmerfile, out_align, out_csv, counter, lock,
                        start=None, end=None, print_block=100, ingroup=None, find_primers=False):
     """ Helper function to render the contents of a part of the kmer file """
     # Get alignment stream
@@ -47,7 +77,7 @@ def render_output_part(kmerfile, out_align, out_tsv, counter, lock,
     row_to_print = []
     print_block_counter = 0
     with stream_writer(out_align, None) as out_align_stream,\
-         stream_writer(out_tsv, sys.stdout) as out_tsv_stream:
+         stream_writer(out_csv, sys.stdout) as out_csv_stream:
         for alignment in alignments:
             # Run primer3 (NOTE: ideally this would run on its own step in krisp.main, not here)
             if find_primers:
@@ -56,23 +86,23 @@ def render_output_part(kmerfile, out_align, out_tsv, counter, lock,
             # Add to alignments list
             if out_align_stream is not None:
                 alignments_to_print.append(alignment.render_alignment())
-            # Add TSV rows to list
-            if out_tsv_stream is not None:
-                row_to_print.append(alignment.render_tsv())
+            # Add csv rows to list
+            if out_csv_stream is not None:
+                row_to_print.append(alignment.render_csv())
             #set_trace(term_size=(80, 60))
             # Print
             print_block_counter += 1
             if print_block_counter >= print_block:
                 # Print alignments
-                safe_print(alignments_to_print, row_to_print, out_align_stream, out_tsv_stream, counter, lock)
+                safe_print(alignments_to_print, row_to_print, out_align_stream, out_csv_stream, counter, lock, find_primers)
                 alignments_to_print = []
                 row_to_print = []
                 print_block_counter = 0
         if print_block_counter > 0:
-            safe_print(alignments_to_print, row_to_print, out_align_stream, out_tsv_stream, counter, lock)
+            safe_print(alignments_to_print, row_to_print, out_align_stream, out_csv_stream, counter, lock, find_primers)
 
 
-def render_output(kmerfile, out_align=None, out_tsv=sys.stdout, cores=1, print_block=10, ingroup=None, find_primers=False):
+def render_output(kmerfile, out_align=None, out_csv=sys.stdout, cores=1, print_block=10, ingroup=None, find_primers=False):
     """ Function to print alignments from a file in parallel
 
     Parameters
@@ -84,8 +114,8 @@ def render_output(kmerfile, out_align=None, out_tsv=sys.stdout, cores=1, print_b
     out_align : str or stream
         The path to the alignment output file or stream to write to (e.g. sys.stdout)
 
-    out_tsv : str or stream
-        The path to the TSV output file or stream to write to (e.g. sys.stdout)
+    out_csv : str or stream
+        The path to the csv output file or stream to write to (e.g. sys.stdout)
 
     cores : int
         The number of processors to use
@@ -113,7 +143,7 @@ def render_output(kmerfile, out_align=None, out_tsv=sys.stdout, cores=1, print_b
     # Create a list of job args
     job_args = []
     for start, end in fptr_start_end:
-        job_args.append((kmerfile, out_align, out_tsv, counter, lock, start, end, print_block, ingroup, find_primers))
+        job_args.append((kmerfile, out_align, out_csv, counter, lock, start, end, print_block, ingroup, find_primers))
 
     # Start a group of processes
     processes = []

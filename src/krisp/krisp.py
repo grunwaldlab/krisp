@@ -183,9 +183,9 @@ def main():
             help="Write results as human-readable alignments to a file (gzip supported). Default: do not write alignment output")
     parser.add_argument(
             "-t",
-            "--out_tsv",
+            "--out_csv",
             type=str,
-            help="Write results to as a TSV (tab-separated value) file (gzip supported). Default: print to screen (stdout)")
+            help="Write results to as a CSV (tab-separated value) file (gzip supported). Default: print to screen (stdout)")
     parser.add_argument(
             "-w",
             "--workdir",
@@ -300,7 +300,7 @@ def main():
             ingroup = [simplename(f) for f in args.files]
         found = render_output(result,
                               out_align=args.out_align,
-                              out_tsv=args.out_tsv,
+                              out_csv=args.out_csv,
                               cores=args.parallel,
                               print_block=1000,
                               ingroup=ingroup,
