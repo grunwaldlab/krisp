@@ -5,8 +5,6 @@ import os
 import sys
 from .shared import *
 from contextlib import contextmanager
-import pdb
-
 from pudb.remote import set_trace
 
 primer3_col_names = [

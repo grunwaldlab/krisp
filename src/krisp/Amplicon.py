@@ -4,7 +4,7 @@ import re
 import primer3
 from statistics import mean
 from Bio.Data import IUPACData
-
+from prettytable import PrettyTable
 from pudb.remote import set_trace
 
 UNKNOWN_CHAR = "?"
@@ -557,6 +557,38 @@ class ConservedEndAmplicons:
                               target_len=self.diagnosticLength(), **ConservedEndAmplicons.P3_ARGS)
         return self.p3['PRIMER_PAIR_NUM_RETURNED'] != 0
 
+    def _render_primer3_stats(self):
+        if self.p3 is None:
+            raise ValueError('Primer3 not run before results are to be rendered.')
+
+        left_stats = {k[14:]: v for k, v in self.p3.items() if 'PRIMER_LEFT_0_' in k}
+        right_stats = {k[15:]: v for k, v in self.p3.items() if 'PRIMER_RIGHT_0_' in k}
+        pair_stats = {k[14:]: v for k, v in self.p3.items() if 'PRIMER_PAIR_0_' in k}
+
+        def render_col_names(names):
+            return [x.title().replace('_', ' ') for x in names]
+
+        def render_col_values(names):
+            return [str(round(x, 5)) if isinstance(x, float) else x for x in names]
+
+        primer_table = PrettyTable(['Direction'] + render_col_names(left_stats.keys()))
+        primer_table.add_row(['Forward'] + render_col_values(left_stats.values()))
+        primer_table.add_row(['Reverse'] + render_col_values(right_stats.values()))
+        primer_table.align = 'l'
+
+        pair_table = PrettyTable(render_col_names(pair_stats.keys()))
+        pair_table.add_row(render_col_values(pair_stats.values()))
+        pair_table.align = 'l'
+
+        #set_trace(term_size=(80, 60))
+
+        output = '\nPrimer statistics:\n' + \
+                 primer_table.get_string(border=False) + \
+                 '\n\nPair statistics:\n' + \
+                 pair_table.get_string(border=False)
+        return output
+
+
     def render_alignment(self):
         """ Return a string representation of an alignment """
         # Try splitting amplicons based on ingroup, outgroup
@@ -610,7 +642,11 @@ class ConservedEndAmplicons:
                 result[-1] = result[-1].ljust(len(text_out))
                 result[-1] = "".join([annot if bracket == ' ' else bracket
                                       for bracket, annot in zip(result[-1], text_out)])
-            #set_trace(term_size=(80, 60))
+
+
+        # Add primer3 statistics for primers
+        if self.p3 is not None:
+            result.append(self._render_primer3_stats())
 
         # Add newline to separate inputs
         result[-1] += '\n'
