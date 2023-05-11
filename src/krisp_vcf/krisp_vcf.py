@@ -1191,6 +1191,9 @@ class ResultWriter:
         self.update_stats(output)
         self.print_status()
 
+    def finish(self):
+        print('', file=sys.stderr) #move line down so stats are not covered
+
 
 def mp_worker(queue, log_queue, args, contig, groups, reference, **kwargs):
     configure_subprocess_logger(log_queue)
@@ -1228,6 +1231,7 @@ def mp_listener(result_queue, log_queue, args):
                     logger.handle(logs)
                 except queue.Empty:
                     break
+    writer.finish()
     total_vars = sum(writer.variant_counts.values()) + sum(writer.group_counts.values())
     logger.info("Total variants scanned: " + str(total_vars))
 
@@ -1301,6 +1305,7 @@ def run_all():
                 for result in report_diag_region(args.vcf, contig, groups, reference, args,
                                                  **search_args):
                     writer.write(result)
+            writer.finish()
         total_vars = sum(writer.variant_counts.values()) + sum(writer.group_counts.values())
         logger.info("Total variants scanned: " + str(total_vars))
 
