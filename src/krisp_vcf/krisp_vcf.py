@@ -211,12 +211,13 @@ class GroupedRegion:
                         yield cls(variants=windows[group].variants, group=group, reference=reference,
                                   upstream=windows[group].upstream, downstream=windows[group].downstream)
         # Clear the upstream window
-        for index in range(flank - 1):
+        for index in range(len(next(iter(windows.values())).upstream)):
             for group in groups:
                 increment(windows[group], flank=flank)
                 if len(windows[group].variants) > 0:  # Can be 0 when a single var is larger than the span
                     yield cls(variants=windows[group].variants, group=group, reference=reference,
                               upstream=windows[group].upstream, downstream=windows[group].downstream)
+
 
     @staticmethod
     def _get_reference(ref_path):
@@ -564,7 +565,7 @@ def run_primer3(template, target_start, target_len,
     else:
         global_options = parse_primer3_settings(options)
 
-    p3_output = primer3.bindings.designPrimers(
+    p3_output = primer3.bindings.design_primers(
         {
             'SEQUENCE_TEMPLATE': "".join(template),
             # 'SEQUENCE_INTERNAL_OLIGO': "".join(crrna_seq),
