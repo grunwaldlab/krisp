@@ -906,9 +906,9 @@ def parse_command_line_args():
                         help='The path to an tabix index file for the VCF file. If not supplied, a file with the same name as the VCF file with .tbi/.csi appended will be searched for. If that is not found, an index file will be created in the same directory as the VCF file.')
     parser.add_argument('--groups', type=str, nargs="+", metavar='TEXT',
                         help='One or more groups that are to be distinguished by variants. These should match the values of the column specified by --group_col in the metadata file. (default: use all groups)')
-    parser.add_argument('--out', type=str, metavar='PATH',
+    parser.add_argument('--out_tsv', type=str, metavar='PATH',
                         help='The output file to create. If not supplied, results will be printed to the screen (standard out). (default: print to stdout)')
-    parser.add_argument('--align_out', type=str, metavar='PATH',
+    parser.add_argument('--out_align', type=str, metavar='PATH',
                         help='A file path to print human-readable alignments of diagnostic regions. (default: do not output)')
     parser.add_argument('--chroms', type=str, nargs="+", metavar='TEXT',
                         help='One or more chromosomes (reference fasta headers) to restrict the search to. (default: use all chromosomes)')
@@ -970,8 +970,9 @@ def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=
             index = csi_path
         else:
             logger.info(f'Creating index file  "{tbi_path}"')
-            pysam.tabix_index(path, preset='vcf', keep_original=True)
-            index = tbi_path
+            pysam.tabix_index(path, preset='vcf', keep_original=True, force=True)
+            index = path + '.gz.tbi'
+            path = path + '.gz'
     # Reduce chunk size if too big for custom position range
     if pos_subset is not None:
         pos_length = max(pos_subset) - min(pos_subset) + 1
@@ -1129,7 +1130,7 @@ def report_diag_region(vcf_path, contig, groups, reference, args, **kwargs):
         stats[region.type] += 1
         if region.type == "Diagnostic":
             output = _format_for_csv(region, reference, groups)
-            if args.align_out is None:
+            if args.out_align is None:
                 alignment = None
             else:
                 alignment = _print_alignment(region, reference, groups)
@@ -1151,7 +1152,7 @@ class ResultWriter:
         self.group_counts = {g: 0 for g in groups}
         self.align_path = align_path
         if align_path is not None:
-            self.align_out = open(align_path, "w")
+            self.out_align = open(align_path, "w")
 
     def print_result(self, result):
         if not self.result_header_printed:
@@ -1181,7 +1182,7 @@ class ResultWriter:
 
     def write_alignment(self, output):
         if self.align_path is not None:
-            self.align_out.writelines([x + '\n' for x in output] + ['\n'])
+            self.out_align.writelines([x + '\n' for x in output] + ['\n'])
 
     def write(self, output):
         self.print_result(output['result'])
@@ -1206,8 +1207,8 @@ def mp_listener(result_queue, log_queue, args):
     '''listens for output on the queue and writes to a file. '''
     global logger
     logger = configure_global_logger(args, mode="a")
-    with stream_writer(args.out, sys.stdout) as output_stream:
-        writer = ResultWriter(output_stream, args.groups, align_path=args.align_out)
+    with stream_writer(args.out_tsv, sys.stdout) as output_stream:
+        writer = ResultWriter(output_stream, args.groups, align_path=args.out_align)
         while True:
             # Write one result returned by workers
             try:
@@ -1251,6 +1252,9 @@ def run_all():
     groups = _parse_group_data(args.metadata, groups=args.groups, sample_col=args.sample_col, group_col=args.group_col)
     contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=500000, flank_size=1000,
                                contig_subset=args.chroms, pos_subset=args.pos) #TODO base on amplicon size, need to add to args
+    gz_path = args.vcf + '.gz'
+    if os.path.isfile(gz_path):
+        args.vcf = gz_path
     search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'tm',
                         'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases', 'gc_clamp', 'max_end_gc')
     search_args = {k: v for k, v in vars(args).items() if k in search_arg_names}
@@ -1290,8 +1294,8 @@ def run_all():
         logger = configure_global_logger(args, mode='a')
     else:
         logger.debug('Running code on a single core')
-        with stream_writer(args.out, sys.stdout) as output_stream:
-            writer = ResultWriter(output_stream, args.groups, align_path=args.align_out)
+        with stream_writer(args.out_tsv, sys.stdout) as output_stream:
+            writer = ResultWriter(output_stream, args.groups, align_path=args.out_align)
             for contig in contigs:
                 for result in report_diag_region(args.vcf, contig, groups, reference, args,
                                                  **search_args):
