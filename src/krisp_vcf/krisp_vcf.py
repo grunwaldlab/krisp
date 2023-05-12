@@ -360,6 +360,7 @@ class GroupedRegion:
     def sequence(self, reference, start, end, group=None, annotate=False):
         """Infer the sequence for the current group based on the reference sequence and variants
         """
+
         # Find variants within target region
         all_vars = self.downstream + self.variants + self.upstream
         var_starts = [x.variant.pos - 1 for x in all_vars]
@@ -849,16 +850,25 @@ def find_diag_region(variants,
             yield region
             continue
 
-        # Are there no overlapping variants TODO: fix so this is not needed
-        for v1, v2 in zip(list(region.variants)[:-1], list(region.variants)[1:]):
-            if v1.variant.stop > v2.variant.start:
-                region.type = 'Overlapping'
-                yield region
-                continue
-
-        # Run primer3 on group-specific template
         start_tmp_ref = region.variants[0].variant.pos - 1 - consv_len_dn['ref']
         end_tmp_ref = region.variants[-1].variant.pos - 1 + consv_len_up['ref']
+
+        # Are there no overlapping variants TODO: fix so this is not needed
+        all_vars = region.downstream + region.variants + region.upstream
+        var_starts = [x.variant.pos - 1 for x in all_vars]
+        var_ends = [x.variant.pos + x.variant.rlen - 2 for x in all_vars]
+        vars_in_range = [v for v, vs, ve in zip(all_vars, var_starts, var_ends) if start_tmp_ref <= ve <= end_tmp_ref or start_tmp_ref <= vs <= end_tmp_ref]
+        overlapping = False
+        for v1, v2 in zip(list(vars_in_range)[:-1], list(vars_in_range)[1:]):
+            if v1.variant.stop > v2.variant.start:
+                region.type = 'Overlapping'
+                overlapping = True
+                break
+        if overlapping:
+            yield region
+            continue
+
+        # Run primer3 on group-specific template
         downstream_seq = region.sequence(reference=reference, start=start_tmp_ref, end=start_crrna_ref-1, group=region.group)
         upstream_seq = region.sequence(reference=reference, start=end_crrna_ref+1, end=end_tmp_ref, group=region.group)
 
@@ -1112,8 +1122,8 @@ def _print_alignment(region, reference, groups):
         Annotation(name="crRNA", seq=seq_crrna, start=crrna_range[0] - fwd_range[0]),
         Annotation(name="Right primer", seq=seq_primer_right, start=rev_range[0] - fwd_range[0])
     ]
-
     return render_variant(seqs=group_seqs, ref=ref_seq, p3=region.p3, annots=oligos)
+
 
 def report_diag_region(vcf_path, contig, groups, reference, args, **kwargs):
     if contig is None:  # If reading from stdin
@@ -1255,7 +1265,7 @@ def run_all():
     # Prepare input data
     reference = _parse_reference(args.reference)
     groups = _parse_group_data(args.metadata, groups=args.groups, sample_col=args.sample_col, group_col=args.group_col)
-    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=500000, flank_size=1000,
+    contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=100000, flank_size=1000,
                                contig_subset=args.chroms, pos_subset=args.pos) #TODO base on amplicon size, need to add to args
     gz_path = args.vcf + '.gz'
     if os.path.isfile(gz_path):

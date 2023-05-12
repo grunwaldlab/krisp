@@ -211,6 +211,7 @@ def render_variant(seqs, ref, p3, annots=None):
     """
 
 
+
     # Make alignment
     seqs = _mask_same(seqs, ref)
     if annots is not None:
@@ -219,9 +220,6 @@ def render_variant(seqs, ref, p3, annots=None):
     output = _print_align(seqs, ref, annot_text)
 
     # Make Primer3 output
-    # import pdb
-    # pdb.set_trace()
-    # output += ['Test']
 
     return output
 
