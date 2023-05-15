@@ -1,7 +1,7 @@
 import shutil
 import math
 from collections import defaultdict
-
+from prettytable import PrettyTable
 
 class Annotation:
 
@@ -189,6 +189,32 @@ def format_seq_annot(annots, ref):
     return output
 
 
+def _render_primer3_stats(p3):
+    left_stats = {k[14:]: v for k, v in p3.items() if 'PRIMER_LEFT_0_' in k}
+    right_stats = {k[15:]: v for k, v in p3.items() if 'PRIMER_RIGHT_0_' in k}
+    pair_stats = {k[14:]: v for k, v in p3.items() if 'PRIMER_PAIR_0_' in k}
+
+    def render_col_names(names):
+        return [x.title().replace('_', ' ') for x in names]
+
+    def render_col_values(names):
+        return [str(round(x, 5)) if isinstance(x, float) else x for x in names]
+
+    primer_table = PrettyTable(['Direction'] + render_col_names(left_stats.keys()))
+    primer_table.add_row(['Forward'] + render_col_values(left_stats.values()))
+    primer_table.add_row(['Reverse'] + render_col_values(right_stats.values()))
+    primer_table.align = 'l'
+
+    pair_table = PrettyTable(render_col_names(pair_stats.keys()))
+    pair_table.add_row(render_col_values(pair_stats.values()))
+    pair_table.align = 'l'
+
+    output = '\nPrimer statistics:\n' + \
+             primer_table.get_string(border=False) + \
+             '\n\nPair statistics:\n' + \
+             pair_table.get_string(border=False)
+    return output
+
 def render_variant(seqs, ref, p3, annots=None):
     """Displaying diagnostic variant in human-readable form
 
@@ -220,6 +246,7 @@ def render_variant(seqs, ref, p3, annots=None):
     output = _print_align(seqs, ref, annot_text)
 
     # Make Primer3 output
+    output += [_render_primer3_stats(p3)]
 
     return output
 

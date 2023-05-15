@@ -546,9 +546,11 @@ class ConservedEndAmplicons:
             self.ingroup = frozenset(grouping)
 
     def ingroup_consensus(self):
-        forward_seq = collapse_to_iupac([x.primer for x in self.amplicons])
-        diag_seq    = collapse_to_iupac([x.diagnostic for x in self.amplicons])
-        reverse_seq = collapse_to_iupac([x.reverse for x in self.amplicons])
+        ingroup_amps = [x for x in self.amplicons if set(x.labels).issubset(self.ingroup)]
+        forward_seq = collapse_to_iupac([x.primer for x in ingroup_amps])
+        diag_seq    = collapse_to_iupac([x.diagnostic for x in ingroup_amps])
+        reverse_seq = collapse_to_iupac([x.reverse for x in ingroup_amps])
+        set_trace(term_size=(80, 60))
         return {'forward' : forward_seq, 'diagnostic' : diag_seq, 'reverse' : reverse_seq}
 
     def find_primers(self):

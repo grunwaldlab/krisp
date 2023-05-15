@@ -1122,6 +1122,7 @@ def _print_alignment(region, reference, groups):
         Annotation(name="crRNA", seq=seq_crrna, start=crrna_range[0] - fwd_range[0]),
         Annotation(name="Right primer", seq=seq_primer_right, start=rev_range[0] - fwd_range[0])
     ]
+
     return render_variant(seqs=group_seqs, ref=ref_seq, p3=region.p3, annots=oligos)
 
 
