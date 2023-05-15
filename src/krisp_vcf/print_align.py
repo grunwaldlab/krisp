@@ -215,6 +215,7 @@ def _render_primer3_stats(p3):
              pair_table.get_string(border=False)
     return output
 
+
 def render_variant(seqs, ref, p3, annots=None):
     """Displaying diagnostic variant in human-readable form
 
@@ -235,8 +236,6 @@ def render_variant(seqs, ref, p3, annots=None):
     list of str
         one str for each line to print
     """
-
-
 
     # Make alignment
     seqs = _mask_same(seqs, ref)

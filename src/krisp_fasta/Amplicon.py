@@ -550,7 +550,6 @@ class ConservedEndAmplicons:
         forward_seq = collapse_to_iupac([x.primer for x in ingroup_amps])
         diag_seq    = collapse_to_iupac([x.diagnostic for x in ingroup_amps])
         reverse_seq = collapse_to_iupac([x.reverse for x in ingroup_amps])
-        set_trace(term_size=(80, 60))
         return {'forward' : forward_seq, 'diagnostic' : diag_seq, 'reverse' : reverse_seq}
 
     def find_primers(self):

@@ -1000,12 +1000,13 @@ def read_vcf_contigs(path, reference, index=None, chunk_size=100000, flank_size=
             search_end = len(reference[contig])
         else:
             search_start = min(pos_subset) - 1
-            search_end = max(pos_subset)
+            search_end = max(pos_subset) - 1
         for start in range(search_start, search_end, chunk_size):
             end = start + chunk_size + flank_size
             if start > flank_size:
                 start -= flank_size
             output.append({'contig': contig, 'start': start, 'end': end})
+
     return output
 
 
@@ -1123,7 +1124,15 @@ def _print_alignment(region, reference, groups):
         Annotation(name="Right primer", seq=seq_primer_right, start=rev_range[0] - fwd_range[0])
     ]
 
-    return render_variant(seqs=group_seqs, ref=ref_seq, p3=region.p3, annots=oligos)
+    chrom = list(region.reference.keys())[0]
+    start = fwd_range[0]
+    end = rev_range[1]
+    group = region.group
+    output = [f"## {chrom}:{start}-{end} is diagnostic for {region.group}\n"]
+    output += render_variant(seqs=group_seqs, ref=ref_seq, p3=region.p3, annots=oligos)
+    output += ['\n']
+
+    return output
 
 
 def report_diag_region(vcf_path, contig, groups, reference, args, **kwargs):
