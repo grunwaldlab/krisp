@@ -904,7 +904,7 @@ def parse_command_line_args():
     parser = argparse.ArgumentParser(
         description='Find regions where there are conserved variants for each group that are not found in other groups.')
     parser.add_argument('metadata', type=str, metavar='METADATA',
-                        help='A TSV file containing data with one row per sample. Two columns are required: one which contains the same sample IDs used in the VCF file, and one which identifies which group each sample belongs to. See --sample_col and --group_col for default values and how to specify custom column names.')
+                        help='A CSV file containing data with one row per sample. Two columns are required: one which contains the same sample IDs used in the VCF file, and one which identifies which group each sample belongs to. See --sample_col and --group_col for default values and how to specify custom column names.')
     parser.add_argument('reference', type=str, metavar='REFERENCE',
                         help='The reference file used to make the VCF input. If supplied, the sequence of the region containing each conserved variant is returned with the output.')
     parser.add_argument('--vcf', type=str, default="-", metavar='PATH',
@@ -917,7 +917,7 @@ def parse_command_line_args():
                         help='The path to an tabix index file for the VCF file. If not supplied, a file with the same name as the VCF file with .tbi/.csi appended will be searched for. If that is not found, an index file will be created in the same directory as the VCF file.')
     parser.add_argument('--groups', type=str, nargs="+", metavar='TEXT',
                         help='One or more groups that are to be distinguished by variants. These should match the values of the column specified by --group_col in the metadata file. (default: use all groups)')
-    parser.add_argument('--out_tsv', type=str, metavar='PATH',
+    parser.add_argument('--out_csv', type=str, metavar='PATH',
                         help='The output file to create. If not supplied, results will be printed to the screen (standard out). (default: print to stdout)')
     parser.add_argument('--out_align', type=str, metavar='PATH',
                         help='A file path to print human-readable alignments of diagnostic regions. (default: do not output)')
@@ -1231,7 +1231,7 @@ def mp_listener(result_queue, log_queue, args):
     '''listens for output on the queue and writes to a file. '''
     global logger
     logger = configure_global_logger(args, mode="a")
-    with stream_writer(args.out_tsv, sys.stdout) as output_stream:
+    with stream_writer(args.out_csv, sys.stdout) as output_stream:
         writer = ResultWriter(output_stream, args.groups, align_path=args.out_align)
         while True:
             # Write one result returned by workers
@@ -1319,7 +1319,7 @@ def run_all():
         logger = configure_global_logger(args, mode='a')
     else:
         logger.debug('Running code on a single core')
-        with stream_writer(args.out_tsv, sys.stdout) as output_stream:
+        with stream_writer(args.out_csv, sys.stdout) as output_stream:
             writer = ResultWriter(output_stream, args.groups, align_path=args.out_align)
             for contig in contigs:
                 for result in report_diag_region(args.vcf, contig, groups, reference, args,
@@ -1337,12 +1337,12 @@ def main():
 
 if __name__ == "__main__":
     # Test command:
-    # python -m diagvar.find_diag_region test_data/test_metadata.tsv test_data/unfilt_allscafs_n666.vcf.gz --groups NA1 NA2 EU1 EU2 --reference test_data/PR-102_v3.1_s0001.fasta --out test.csv
+    # python -m diagvar.find_diag_region test_data/test_metadata.csv test_data/unfilt_allscafs_n666.vcf.gz --groups NA1 NA2 EU1 EU2 --reference test_data/PR-102_v3.1_s0001.fasta --out test.csv
     main()
 
 # if __name__ == "__main__":
 #     vcf = pysam.VariantFile('test_data/unfilt_allscafs_n666.vcf.gz')
-#     groups = _read_group_data('test_data/test_metadata.tsv')
+#     groups = _read_group_data('test_data/test_metadata.csv')
 #     groups = {g: v for g, v in groups.items() if g in ["NA1", "NA2", "EU1", "EU2"]}
 #     ref = 'test_data/PR-102_v3.1.fasta'
 #     find_diag_region(vcf,

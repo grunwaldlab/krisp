@@ -83,282 +83,166 @@ All commands have help menus which can be activated by passing the `-h` or `--he
 
 ### Example 1: Searching for a spacer sequence
 
-In example 1, we will be directly searching for a spacer sequence for
-LwaCas13a which accepts a 28-nucleotide spacer sequence and has the highest
-accuracy when the diagnostic SNP is at the 3rd rightmost position.
+In example 1, we will be directly searching for a spacer sequence for LwaCas13a which accepts a 28-nucleotide spacer sequence and has the highest accuracy when the diagnostic SNP is at the 3rd rightmost position.
 In this case, we are looking for a spacer which has the following form:
 
 {25 conserved nts}{1 diagnostic nt}{2 conserved nts}
 
-And we want the diagnostic nucleotide to be conserved in our "ingroup" and 
-different in our "outgroup".
+And we want the diagnostic nucleotide to be conserved in our "ingroup" and different in our "outgroup".
 
 The general form of this command is as follows:
 
 ```
-krisp_fasta {ingroup files} \
-        --outgroup {outgroup files} \
-        --conserved-left 25 \
-        --conserved-right 2 \
-        --diagnostic 1 \
-        --verbose \
-        --dot-alignment \
-        --parallel {number of processors}
+krisp_fasta {ingroup files} --outgroup {outgroup files} --conserved-left 25 --conserved-right 2 --diagnostic 1
 ```
 
-If `krisp_fasta` was installed via the GitHub repository, then test files can be found in the "test_data/" directory.
+If `krisp_fasta` was installed via the GitHub repository, then test files can be found in the "test_data/krisp_fasta" directory.
 Within the "test_data/krisp_fasta" directory, we can run:
 
 ```
-krisp_fasta ingroup*.gz \
-        --outgroup outgroup*.gz \
-        --conserved-left 25 \
-        --conserved-right 2 \
-        --diagnostic 1 \
-        --verbose \
-        --dot-alignment \
-        --cores 4
+krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 25 --conserved-right 2 --diagnostic 1
 ```
 
 The output you see should look something like:
 
 ```
-verbose
-Finding kmer-based diagnostic regions for:
-(0) ingroup0.fasta.gz
-(1) ingroup1.fasta.gz
-With this as an outgroup:
-(0) outgroup0.fasta.gz
-(1) outgroup1.fasta.gz
-(2) outgroup2.fasta.gz
+left_seq,diag_seq,right_seq
+CGACAAGATACTCTCGCAGCTTGGT,M,AG
+TGACGCAGATCATCCCGCGCTTACT,K,A
+```
 
-Extracting 28-mers from ingroup0.fasta.gz and saving to /tmp/tmpx2q99a9h/ingroup0.28mers
-Extracting 28-mers from ingroup1.fasta.gz and saving to /tmp/tmpx2q99a9h/ingroup1.28mers
-Extracting 28-mers from outgroup0.fasta.gz and saving to /tmp/tmpx2q99a9h/outgroup0.28mers
-Extracting 28-mers from outgroup1.fasta.gz and saving to /tmp/tmpx2q99a9h/outgroup1.28mers
-Extracting 28-mers from outgroup2.fasta.gz and saving to /tmp/tmpx2q99a9h/outgroup2.28mers
-=> Extracted and sorted 19,660 28-kmers from ingroup1.fasta.gz in 0.07 seconds
-=> Extracted and sorted 19,660 28-kmers from outgroup1.fasta.gz in 0.07 seconds
-=> Extracted and sorted 19,660 28-kmers from outgroup0.fasta.gz in 0.07 seconds
-=> Extracted and sorted 19,660 28-kmers from ingroup0.fasta.gz in 0.11 seconds
-=> Extracted and sorted 19,660 28-kmers from outgroup2.fasta.gz in 0.11 seconds
-Merging: /tmp/tmpx2q99a9h/outgroup2.28mers + /tmp/tmpx2q99a9h/outgroup1.28mers -> /tmp/tmpx2q99a9h/tmpmzv_vxqx using 1 cores
-Merging: /tmp/tmpx2q99a9h/outgroup0.28mers + /tmp/tmpx2q99a9h/ingroup1.28mers -> /tmp/tmpx2q99a9h/tmpw8bkaq0h using 1 cores
-=> Merged /tmp/tmpx2q99a9h/outgroup2.28mers + /tmp/tmpx2q99a9h/outgroup1.28mers -> /tmp/tmpx2q99a9h/tmpmzv_vxqx in 0.30 seconds
-=> Merged /tmp/tmpx2q99a9h/outgroup0.28mers + /tmp/tmpx2q99a9h/ingroup1.28mers -> /tmp/tmpx2q99a9h/tmpw8bkaq0h in 0.31 seconds
-Merging: /tmp/tmpx2q99a9h/ingroup0.28mers + /tmp/tmpx2q99a9h/tmpw8bkaq0h -> /tmp/tmpx2q99a9h/tmpamgmksp9 using 1 cores
-=> Merged /tmp/tmpx2q99a9h/ingroup0.28mers + /tmp/tmpx2q99a9h/tmpw8bkaq0h -> /tmp/tmpx2q99a9h/tmpamgmksp9 in 0.15 seconds
-Merging: /tmp/tmpx2q99a9h/tmpmzv_vxqx + /tmp/tmpx2q99a9h/tmpamgmksp9 -> /tmp/tmpx2q99a9h/tmpp9dicqvd using 1 cores
-=> Merged /tmp/tmpx2q99a9h/tmpmzv_vxqx + /tmp/tmpx2q99a9h/tmpamgmksp9 -> /tmp/tmpx2q99a9h/tmpp9dicqvd in 0.01 seconds
+This is in the CSV format, which can be easily read by spreadsheet programs and scripting languages like R for further processing.
+Instead of printing to standard output, the output can be saved to a file using the `--out_csv` option or using a bash redirect `>`:
 
-Building alignments ... 
-> Alignment 0
+```
+krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 25 --conserved-right 2 --diagnostic 1 --out_csv test_out.csv
+```
+
+or 
+
+```
+krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 25 --conserved-right 2 --diagnostic 1 > test_out.csv
+```
+
+When verbose is enabled using the `--verbose` option, the files being used and progress updates are printed during runtime:
+
+```
+krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 25 --conserved-right 2 --diagnostic 1 --cores 4 --verbose > test_out.csv
+```
+
+In this example, all output is written to the terminal with the verbose information preceeding the alignments.
+Internally, the verbose data is written to stderr, whereas the alignments are written to stdout, so `test_out.csv` will not contain the progress messages.
+
+A more human-readable alignment format can be outputted as well using the `--out_align` option:
+
+```
+krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 25 --conserved-right 2 --diagnostic 1 --out_align test_align.txt
+```
+
+This produces a file with the following contents: 
+
+```
+CGACAAGATACTCTCGCAGCTTGGTCAG : ingroup0
+CGACAAGATACTCTCGCAGCTTGGTAAG : ingroup1
+CGACAAGATACTCTCGCAGCTTGGTGAG : outgroup0;outgroup1;outgroup2
+                        {#}
+
+TGACGCAGATCATCCCGCGCTTACTGAC : ingroup0
+TGACGCAGATCATCCCGCGCTTACTTAC : ingroup1
+TGACGCAGATCATCCCGCGCTTACTCAC : outgroup0;outgroup1;outgroup2
+                        {#}
+```
+
+We see that 2 potential spacer sequences were found.
+Each alignment is displayed as a reference sequence, followed by the alternative sequences with conserved nucleotides replaced with '.' if the `--dot-alignment` option is used:
+
+```
+krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 25 --conserved-right 2 --diagnostic 1 --dot-alignment --out_align test_align.txt
+```
+
+which produces:
+
+```
 CGACAAGATACTCTCGCAGCTTGGTCAG : ingroup0
 .........................A.. : ingroup1
 .........................G.. : outgroup0;outgroup1;outgroup2
-> Alignment 1
+
 TGACGCAGATCATCCCGCGCTTACTGAC : ingroup0
 .........................T.. : ingroup1
 .........................C.. : outgroup0;outgroup1;outgroup2
-=> Found 2 alignments in 0.60 seconds
-
 ```
 
-When verbose is enabled, `krisp_fasta` will list the files being used as the ingroup
-and outgroup, and print progress information during runtime. Note that
-the verbose output will likely differ from that above as temporary files with
-random names are generated to store intermediate results. These tempory files
-are stored in the computers designated tempory directory, often `/tmp`, and are
-automatically cleaned up after the program exits.
+To the right of each sequence is the filename(s) in which the sequence was found.
+With multiple filenames implying that all of these files contain the same sequence.
+Note that it is possible to have multiple sequences listed for a single file, which may be common for repetitive regions or diploid (or higher) organisms.
 
-In the alignment section, we see that 2 potential spacer sequences were found,
-labeled as Alignment 0 and Alignment 1 respectively. Each alignment is
-displayed as a reference sequence, followed by the alternative sequences with
-conserved nucleotides replaced with '.'. To the right of each sequence is the
-filename(s) in which the sequence was found. With multiple filenames implying
-that all of these files contain the same sequence. Note that it is possible to
-have multiple sequences listed for a single file, which may be common for
-repetitive regions or diploid (or higher) organisms.
-
-#### Note 1: Output options
-In this example, all output is written to the terminal with the verbose
-information preceeding the alignments. Internally, the verbose data is written
-to stderr, whereas the alignments are written to stdout. In simple terms, this
-means that the alignments can be piped to a file without the header verbosity.
-For instance, to pipe the alignments to align.txt, one can run:
-```
-krisp_fasta {commands} > align.txt
-```
-in which case the verbosity is still printed to the terminal. If the verbosity
-information is also to be saved, then it can be piped using *2>*:
-```
-krisp_fasta {commands} > align.txt 2> verbosity.txt 
-```
-
-Alternatively, one can utilize the -o flag to output the alignments to an
-output file:
-
-```
-krisp_fasta {commands} -o align.txt
-```
-
-#### Note 2: Alignment format
-To change the alignment output to dot-format, pass the --dot-alignment flag.
 
 ### Example 2: Searching for conserved primer regions
-In example 2, we will be using `krisp_fasta` to search for conserved primer regions
-which span both the ingroup and outgroup. The general formula is the same as
-in example 1, except that our conserved and diagnostic region will be
-longer.
 
-Let us assume that we are looking for an amplicon which is 100 nucleotides in
-total length, and contains at least 30 conserved nucleotides on each end where
-we will design primers. To find these regions, we can run the following `krisp_fasta`
-command:
+`krisp_fasta` can search for conserved primer regions which span both the ingroup and outgroup and can use Primer3 to desin primers in such regions.
+The general formula is the same as in example 1, except that our conserved and diagnostic region will be longer.
+
+Let us assume that we are looking for an amplicon which is 100 nucleotides in total length, and contains at least 30 conserved nucleotides on each end where we will design primers.
+To find these regions, we can run the following `krisp_fasta` command:
 
 ```
-krisp_fasta ingroup*.gz \
-        --outgroup outgroup*.gz \
-        --conserved-left 30 \
-        --conserved-right 30 \
-        --diagnostic 40 \
-        --verbose \
-        --dot-alignment \
-        --parallel 4
+krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 30 --conserved-right 30 --diagnostic 40 --dot-alignment --primer3 --out_align test_align.txt
 ```
 
-This command was designed to be deliberately similar to that in example 1. For
-convenience, `krisp_fasta` has many other command line options. For instance, when
-the conserved flanking regions are the same, one can simply specify
-`--conserved 30` or `-c 30`. We can also specify the total amplicon length as
-opposed to calculating the diagnostic length: `--amplicon 100` or `-a 100`. In
-which case, the above command is equivalent to:
+This command was designed to be deliberately similar to that in example 1. 
+For convenience, `krisp_fasta`, when the conserved flanking regions are the same, one can simply specify `--conserved 30`.
+We can also specify the total amplicon length as opposed to calculating the diagnostic length: `--amplicon 100`.
+In which case, the above command is equivalent to:
 
 ```
-krisp_fasta ingroup*.gz \
-        --outgroup outgroup*.gz \
-        --conserved 30 \
-        --amplicon 100 \
-        --verbose \
-        --dot-alignment \
-        --parallel 4
+krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved 30 --amplicon 100 --dot-alignment --primer3 --out_align test_align.txt
 ```
 
-The output of which should look something like:
+Both commands should produce output like the following in "test_align.txt":
 
 ```
-Finding kmer-based diagnostic regions for:
-(0) ingroup0.fasta.gz
-(1) ingroup1.fasta.gz
-With this as an outgroup:
-(0) outgroup0.fasta.gz
-(1) outgroup1.fasta.gz
-(2) outgroup2.fasta.gz
-
-Extracting 100-mers from ingroup0.fasta.gz and saving to /tmp/tmpxabqwtjd/ingroup0.100mers
-Extracting 100-mers from ingroup1.fasta.gz and saving to /tmp/tmpxabqwtjd/ingroup1.100mers
-Extracting 100-mers from outgroup0.fasta.gz and saving to /tmp/tmpxabqwtjd/outgroup0.100mers
-Extracting 100-mers from outgroup1.fasta.gz and saving to /tmp/tmpxabqwtjd/outgroup1.100mers
-Extracting 100-mers from outgroup2.fasta.gz and saving to /tmp/tmpxabqwtjd/outgroup2.100mers
-=> Extracted and sorted 18,220 100-kmers from outgroup1.fasta.gz in 0.13 seconds
-=> Extracted and sorted 18,220 100-kmers from outgroup2.fasta.gz in 0.13 seconds
-=> Extracted and sorted 18,220 100-kmers from ingroup0.fasta.gz in 0.13 seconds
-=> Extracted and sorted 18,220 100-kmers from outgroup0.fasta.gz in 0.13 seconds
-=> Extracted and sorted 18,220 100-kmers from ingroup1.fasta.gz in 0.13 seconds
-Merging: /tmp/tmpxabqwtjd/outgroup2.100mers + /tmp/tmpxabqwtjd/outgroup1.100mers -> /tmp/tmpxabqwtjd/tmppdmq3pvq using 1 cores
-Merging: /tmp/tmpxabqwtjd/outgroup0.100mers + /tmp/tmpxabqwtjd/ingroup1.100mers -> /tmp/tmpxabqwtjd/tmpwft9lb3x using 1 cores
-=> Merged /tmp/tmpxabqwtjd/outgroup2.100mers + /tmp/tmpxabqwtjd/outgroup1.100mers -> /tmp/tmpxabqwtjd/tmppdmq3pvq in 0.28 seconds
-=> Merged /tmp/tmpxabqwtjd/outgroup0.100mers + /tmp/tmpxabqwtjd/ingroup1.100mers -> /tmp/tmpxabqwtjd/tmpwft9lb3x in 0.28 seconds
-Merging: /tmp/tmpxabqwtjd/ingroup0.100mers + /tmp/tmpxabqwtjd/tmpwft9lb3x -> /tmp/tmpxabqwtjd/tmpu2cg3j3t using 1 cores
-=> Merged /tmp/tmpxabqwtjd/ingroup0.100mers + /tmp/tmpxabqwtjd/tmpwft9lb3x -> /tmp/tmpxabqwtjd/tmpu2cg3j3t in 0.14 seconds
-Merging: /tmp/tmpxabqwtjd/tmppdmq3pvq + /tmp/tmpxabqwtjd/tmpu2cg3j3t -> /tmp/tmpxabqwtjd/tmpqh8stw2c using 1 cores
-=> Merged /tmp/tmpxabqwtjd/tmppdmq3pvq + /tmp/tmpxabqwtjd/tmpu2cg3j3t -> /tmp/tmpxabqwtjd/tmpqh8stw2c in 0.02 seconds
-
-Building alignments ... 
-> Alignment 0
 ACGCACAAGGACAAGTGCCACTAAACCAGCCAGCCCTGACGCAGATCATCCCGCGCTTACTGACCAAGCTGCGAGAGTATCTTGTCGATGGGAACGATAG : ingroup0
 .............................................................T...................................... : ingroup1
 .............................................................C...................................... : outgroup0;outgroup1;outgroup2
-> Alignment 1
-CTATCGTTCCCATCGACAAGATACTCTCGCAGCTTGGTCAGTAAGCGCGGGATGATCTGCGTCAGGGCTGGCTGGTTTAGTGGCACTTGTCCTTGTGCGT : ingroup0
-......................................A............................................................. : ingroup1
-......................................G............................................................. : outgroup0;outgroup1;outgroup2
-=> Found 2 alignments in 0.59 seconds
+   └────────Forward─────────┘                                           └────────Reverse────────┘
 
+Primer statistics:
+ Direction  Penalty  Sequence                    Tm        Gc Percent  Self Any Th  Self End Th  Hairpin Th  Position Penalty  End Stability  Template Mispriming       Template Mispriming Th   
+ Forward    7.74706  CACAAGGACAAGTGCCACTAAACCAG  64.24706  50.0        0.0          2.14676      0.0         0.0               4.0            -1.7976931348623157e+308  -1.7976931348623157e+308 
+ Reverse    6.43757  TCGTTCCCATCGACAAGATACTCTC   61.93757  48.0        0.0          0.0          37.5163     0.0               3.2            -1.7976931348623157e+308  -1.7976931348623157e+308 
+
+Pair statistics:
+ Penalty   Compl Any Th  Compl End Th  Product Size  Product Tm  Product Tm Oligo Tm Diff  T Opt A   Template Mispriming      
+ 14.18463  0.0           0.0           94            84.32116    22.38359                  62.70608  -1.7976931348623157e+308 
 ```
 
 In this example, `krisp_fasta` finds two regions which specify our input constraints.
-Note that these alignments are actually reverse complements. `krisp_fasta` assumes
-that the input genomes are double-stranded and creates the corresponding kmers
-for both strands, thus finding two solutions.
+Note that these alignments are actually reverse complements. 
+`krisp_fasta` assumes that the input genomes are double-stranded and creates the corresponding kmers for both strands, thus finding two solutions.
 
 ### Example 3: Using `krisp_fasta` in creative ways
-Users are encouraged to use `krisp_fasta` in any way that they seem fit. In this
-example, we will be using krisp to find all 60-mers which are critically 
-conserved across a group of input files. To do this, we will specify a
-conserved region of 30-nts in each direction and a diagnostic region of 0-nts.
+
+Users are encouraged to use `krisp_fasta` in any way that they seem fit.
+In this example, we will be using krisp to find all 60-mers which are critically conserved across a group of input files.
+To do this, we will specify a conserved region of 30-nts in each direction and a diagnostic region of 0-nts.
 
 ```                                                                             
-krisp_fasta ingroup*.gz \                                                             
-        --outgroup outgroup*.gz \                                               
-        --conserved 30 \                                                        
-        --diagnostic 0 \                                                        
-        --verbose \ 
-        --dot-alignment \                                                            
-        --corea 4                                                           
+krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved 30 --diagnostic 0                                         
 ```
 
 The result of which is:
 
 ```
-Finding kmer-based diagnostic regions for:
-(0) ingroup0.fasta.gz
-(1) ingroup1.fasta.gz
-With this as an outgroup:
-(0) outgroup0.fasta.gz
-(1) outgroup1.fasta.gz
-(2) outgroup2.fasta.gz
-
-Extracting 60-mers from ingroup0.fasta.gz and saving to /tmp/tmpbx3fbnt8/ingroup0.60mers
-Extracting 60-mers from ingroup1.fasta.gz and saving to /tmp/tmpbx3fbnt8/ingroup1.60mers
-Extracting 60-mers from outgroup0.fasta.gz and saving to /tmp/tmpbx3fbnt8/outgroup0.60mers
-Extracting 60-mers from outgroup1.fasta.gz and saving to /tmp/tmpbx3fbnt8/outgroup1.60mers
-Extracting 60-mers from outgroup2.fasta.gz and saving to /tmp/tmpbx3fbnt8/outgroup2.60mers
-=> Extracted and sorted 19,020 60-kmers from outgroup0.fasta.gz in 0.09 seconds
-=> Extracted and sorted 19,020 60-kmers from outgroup2.fasta.gz in 0.09 seconds
-=> Extracted and sorted 19,020 60-kmers from outgroup1.fasta.gz in 0.09 seconds
-=> Extracted and sorted 19,020 60-kmers from ingroup0.fasta.gz in 0.13 seconds
-=> Extracted and sorted 19,020 60-kmers from ingroup1.fasta.gz in 0.13 seconds
-Merging: /tmp/tmpbx3fbnt8/outgroup2.60mers + /tmp/tmpbx3fbnt8/outgroup1.60mers -> /tmp/tmpbx3fbnt8/tmpvi16uh4y using 1 cores
-Merging: /tmp/tmpbx3fbnt8/outgroup0.60mers + /tmp/tmpbx3fbnt8/ingroup1.60mers -> /tmp/tmpbx3fbnt8/tmpmrtyeubg using 1 cores
-=> Merged /tmp/tmpbx3fbnt8/outgroup2.60mers + /tmp/tmpbx3fbnt8/outgroup1.60mers -> /tmp/tmpbx3fbnt8/tmpvi16uh4y in 0.31 seconds
-=> Merged /tmp/tmpbx3fbnt8/outgroup0.60mers + /tmp/tmpbx3fbnt8/ingroup1.60mers -> /tmp/tmpbx3fbnt8/tmpmrtyeubg in 0.31 seconds
-Merging: /tmp/tmpbx3fbnt8/ingroup0.60mers + /tmp/tmpbx3fbnt8/tmpmrtyeubg -> /tmp/tmpbx3fbnt8/tmprw0a31pb using 1 cores
-=> Merged /tmp/tmpbx3fbnt8/ingroup0.60mers + /tmp/tmpbx3fbnt8/tmpmrtyeubg -> /tmp/tmpbx3fbnt8/tmprw0a31pb in 0.14 seconds
-Merging: /tmp/tmpbx3fbnt8/tmpvi16uh4y + /tmp/tmpbx3fbnt8/tmprw0a31pb -> /tmp/tmpbx3fbnt8/tmpqk8ur264 using 1 cores
-=> Merged /tmp/tmpbx3fbnt8/tmpvi16uh4y + /tmp/tmpbx3fbnt8/tmprw0a31pb -> /tmp/tmpbx3fbnt8/tmpqk8ur264 in 0.01 seconds
-
-Building alignments ... 
-> Alignment 0
-ACGCACAAGGACAAGTGCCACTAAACCAGCCAGCCCTGACGCAGATCATCCCGCGCTTAC : ingroup0;ingroup1;outgroup0;outgroup1;outgroup2
-> Alignment 1
-AGTAAGCGCGGGATGATCTGCGTCAGGGCTGGCTGGTTTAGTGGCACTTGTCCTTGTGCG : ingroup0;ingroup1;outgroup0;outgroup1;outgroup2
-> Alignment 2
-CGCACAAGGACAAGTGCCACTAAACCAGCCAGCCCTGACGCAGATCATCCCGCGCTTACT : ingroup0;ingroup1;outgroup0;outgroup1;outgroup2
-> Alignment 3
-GTAAGCGCGGGATGATCTGCGTCAGGGCTGGCTGGTTTAGTGGCACTTGTCCTTGTGCGT : ingroup0;ingroup1;outgroup0;outgroup1;outgroup2
-=> Found 4 alignments in 0.61 seconds
-
+TODO: produces error right now
 ```
 
-In this case, there is actually no distinction between the ingroup and outgroup
-files as these are only required to differ in the diagnostic region which we 
-specified to be of 0 length.
+In this case, there is actually no distinction between the ingroup and outgroup iles as these are only required to differ in the diagnostic region which we specified to be of 0 length.
+
 
 ### Example 4: Using `kstream` to extract kmers
-`kstream` is an extreamly flexible and powerful tool for extracting and parsing
-kmers from an input fasta file or input stream of sequences. Some of the
-available options are listed below, but see the help menu for a complete list.
+
+`kstream` is an extremely flexible and powerful tool for extracting and parsing kmers from an input fasta file or input stream of sequences.
+Some of the available options are listed below, but see the help menu for a complete list.
 
 
 `--kmers` allows the user to specify the length (or lengths)
@@ -383,6 +267,7 @@ first alphabetically.
 
 
 #### Extracting complete sequences
+
 By default, `kstream` will parse a fasta file and print out every sequence if
 no kmer length is provided. For example:
 
@@ -397,6 +282,7 @@ The previous command can also be written as:
 
 
 #### Sorted 6-mers, without 'N' or 'n', removing softmasking, in canonical form
+
 This example utilizes a few of the common command line arguments: For example,
 to extract all 6-mers which don't contain "N" or "n", in sorted order:
 
