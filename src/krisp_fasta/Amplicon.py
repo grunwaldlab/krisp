@@ -546,10 +546,16 @@ class ConservedEndAmplicons:
             self.ingroup = frozenset(grouping)
 
     def ingroup_consensus(self):
-        ingroup_amps = [x for x in self.amplicons if set(x.labels).issubset(self.ingroup)]
-        forward_seq = collapse_to_iupac([x.primer for x in ingroup_amps])
-        diag_seq    = collapse_to_iupac([x.diagnostic for x in ingroup_amps])
-        reverse_seq = collapse_to_iupac([x.reverse for x in ingroup_amps])
+        return self.consensus(self.ingroup)
+
+    def consensus(self, labels=None):
+        if labels is None:
+            amps = self.amplicons
+        else:
+            amps = [x for x in self.amplicons if set(x.labels).issubset(labels)]
+        forward_seq = collapse_to_iupac([x.primer for x in amps])
+        diag_seq = collapse_to_iupac([x.diagnostic for x in amps])
+        reverse_seq = collapse_to_iupac([x.reverse for x in amps])
         return {'forward' : forward_seq, 'diagnostic' : diag_seq, 'reverse' : reverse_seq}
 
     def find_primers(self):
@@ -656,7 +662,10 @@ class ConservedEndAmplicons:
         return '\n'.join(result)
 
     def render_csv(self, sep=','):
-        output = list(self.ingroup_consensus().values())
+        if len(self.amplicons) == 1:
+            output = list(self.consensus().values())
+        else:
+            output = list(self.ingroup_consensus().values())
         if self.p3 is not None:
             output.extend(_format_p3_output(self.p3).values())
         output = [str(x) for x in output]

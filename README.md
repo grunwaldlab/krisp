@@ -5,12 +5,11 @@ A python package for designing diagnostic CRISPR assays and other PCR-based diag
 
 ## Overview
 
-CRISPR diagnostic assays, such as SHERLOCK and DETECTR, require the designing
-of a crRNA which contains a spacer sequence unique to the pathogen in question.
-Most assays also require the design of primers for input nucleic acid amplification, using techniques such as PCR, RPA, and LAMP.
-The increasing abundance of whole-genome sequence data can be leveraged to predict effective primers and diagnositic regions.
+CRISPR diagnostic assays, such as SHERLOCK and DETECTR, require the designing of a crRNA which contains a spacer sequence unique to the taxon of interest.
+Most assays also require the design of primers for input nucleic acid pre-amplification, using techniques such as PCR, RPA, and LAMP.
+The increasing abundance of whole-genome sequence data can be leveraged to predict effective primers and diagnostic regions.
 This data typically takes the form of whole-genome sequences (FASTA files) or variant data from reads mapped to a reference (VCF files).
-The `krisp_fasta` package contains python functions and command line programs to infer diagnostic regions from either FASTA files or a VCF file plus a reference.
+The `krisp` package contains python functions and command line programs to infer diagnostic regions from either FASTA files or a VCF file plus a reference.
 The `krisp_fasta` command uses a k-mer based approach on FASTA input and the `krisp_vcf` uses a sliding-window-based analysis of variants in a VCF file.
 Both commands use optimized algorithms that take advantage of multiple CPUs and use minimal RAM.
 
@@ -29,15 +28,15 @@ Primer3 can then be used to identify primers in the conserved flanking regions a
 
 ## Requirements
 
-`krisp_fasta` requires python version 3.6 or greater and a UNIX-like operating
-system which provides the `sort` command line utility. Most operating
-systems have `sort` installed by default as it is required by the POSIX
-standard. To see if `sort` is already installed, run:
+`krisp` requires python version 3.6 or greater and a UNIX-like operating system which provides the `sort` command line utility.
+Most operating systems have `sort` installed by default as it is required by the POSIX standard.
+To see if `sort` is already installed, run:
 
 `sort --help`
 
+If a help menu is displayed, then `sort` is installed.
 Various python packages are required as well, including `pysam`, `Bio`, `primer3-py`, and `nltk`.
-These should be installed automatically when `krisp_fasta` is installed.
+These should be installed automatically when `krisp` is installed.
 
 ## Installation
 
@@ -49,12 +48,13 @@ These should be installed automatically when `krisp_fasta` is installed.
 
 
 ### Downloading from github
-Alternatively, `krisp_fasta` can be installed from source utilizing the
-provided Makefile. Simply run in the root directory:
+
+Alternatively, `krisp_fasta` can be installed from source utilizing the Makefile in this repository.
+Simply run in the root directory:
 
 `make install` 
 
-Similarly, krisp can be uninstalled by running:
+Similarly, `krisp` can be uninstalled by running:
 
 `make uninstall`
 
@@ -65,14 +65,13 @@ or
 
 ### What is included
 
-The `krisp_fasta` package is written in python, and when installed, provides a
-stand-alone command line utilities called `krisp_fasta` and `krisp_vcf`.
+The `krisp` package is written in python, and when installed, provides a stand-alone command line utilities called `krisp_fasta` and `krisp_vcf`.
 All the functionality of `krisp_fasta` is provided through the command line and knowledge of python is not required.
 In all the examples below, `krisp_fasta` is executed through the command line.
 
 In addition to `krisp_fasta` and `krisp_vcf`, installation also provides a second command line utility called `kstream`.
 `kstream` is a separate python program which extracts and parses kmers from an input fasta file.
-`krisp_fasta` utilizes `kstream` internally and is provided as a courtesy.
+`krisp_fasta` utilizes `kstream` internally.
 Users of `krisp_fasta` are not required to use `kstream` directly.
 See examples below `kstream` usage.
 
@@ -83,7 +82,7 @@ All commands have help menus which can be activated by passing the `-h` or `--he
 
 ### Example 1: Searching for a spacer sequence
 
-In example 1, we will be directly searching for a spacer sequence for LwaCas13a which accepts a 28-nucleotide spacer sequence and has the highest accuracy when the diagnostic SNP is at the 3rd rightmost position.
+In example 1, we will be directly searching for a spacer sequence for LwaCas13a, which accepts a 28-nucleotide spacer sequence and has the highest accuracy when the diagnostic SNP is at the 3rd rightmost position.
 In this case, we are looking for a spacer which has the following form:
 
 {25 conserved nts}{1 diagnostic nt}{2 conserved nts}
@@ -130,7 +129,7 @@ When verbose is enabled using the `--verbose` option, the files being used and p
 krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 25 --conserved-right 2 --diagnostic 1 --cores 4 --verbose > test_out.csv
 ```
 
-In this example, all output is written to the terminal with the verbose information preceeding the alignments.
+In this example, all output is written to the terminal with the verbose information preceding the alignments.
 Internally, the verbose data is written to stderr, whereas the alignments are written to stdout, so `test_out.csv` will not contain the progress messages.
 
 A more human-readable alignment format can be outputted as well using the `--out_align` option:
@@ -172,17 +171,16 @@ TGACGCAGATCATCCCGCGCTTACTGAC : ingroup0
 .........................C.. : outgroup0;outgroup1;outgroup2
 ```
 
-To the right of each sequence is the filename(s) in which the sequence was found.
-With multiple filenames implying that all of these files contain the same sequence.
+To the right of each sequence is the filename(s) in which the sequence was found, with multiple filenames implying that all of these files contain the same sequence.
 Note that it is possible to have multiple sequences listed for a single file, which may be common for repetitive regions or diploid (or higher) organisms.
 
 
 ### Example 2: Searching for conserved primer regions
 
-`krisp_fasta` can search for conserved primer regions which span both the ingroup and outgroup and can use Primer3 to desin primers in such regions.
+`krisp_fasta` can search for conserved primer regions which span both the ingroup and outgroup and can use Primer3 to design primers in such regions.
 The general formula is the same as in example 1, except that our conserved and diagnostic region will be longer.
 
-Let us assume that we are looking for an amplicon which is 100 nucleotides in total length, and contains at least 30 conserved nucleotides on each end where we will design primers.
+Let us assume that we are looking for an amplicon which is 100 nucleotides in total length, and contains at least 30 conserved nucleotides on each end where we can design primers.
 To find these regions, we can run the following `krisp_fasta` command:
 
 ```
@@ -216,9 +214,14 @@ Pair statistics:
  14.18463  0.0           0.0           94            84.32116    22.38359                  62.70608  -1.7976931348623157e+308 
 ```
 
-In this example, `krisp_fasta` finds two regions which specify our input constraints.
+
+In this example, `krisp_fasta` finds two regions which specify our input constraints, although only the first is shown in the output above.
 Note that these alignments are actually reverse complements. 
 `krisp_fasta` assumes that the input genomes are double-stranded and creates the corresponding kmers for both strands, thus finding two solutions.
+
+The addition of the `--primer3` option causes Primer3 to be run on each potential region.
+When `--primer3` is used, only regions for which it was possible to find primers are included in the output.
+Additionally, the Primer3 statistics are included in the alignment and CSV output.
 
 ### Example 3: Using `krisp_fasta` in creative ways
 
@@ -227,13 +230,17 @@ In this example, we will be using krisp to find all 60-mers which are critically
 To do this, we will specify a conserved region of 30-nts in each direction and a diagnostic region of 0-nts.
 
 ```                                                                             
-krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved 30 --diagnostic 0                                         
+krisp_fasta ingroup*.gz outgroup*.gz --conserved 30 --diagnostic 0                                        
 ```
 
 The result of which is:
 
 ```
-TODO: produces error right now
+left_seq,diag_seq,right_seq
+ACGCACAAGGACAAGTGCCACTAAACCAGC,,CAGCCCTGACGCAGATCATCCCGCGCTTAC
+AGTAAGCGCGGGATGATCTGCGTCAGGGCT,,GGCTGGTTTAGTGGCACTTGTCCTTGTGCG
+CGCACAAGGACAAGTGCCACTAAACCAGCC,,AGCCCTGACGCAGATCATCCCGCGCTTACT
+GTAAGCGCGGGATGATCTGCGTCAGGGCTG,,GCTGGTTTAGTGGCACTTGTCCTTGTGCGT
 ```
 
 In this case, there is actually no distinction between the ingroup and outgroup iles as these are only required to differ in the diagnostic region which we specified to be of 0 length.
@@ -242,24 +249,19 @@ In this case, there is actually no distinction between the ingroup and outgroup 
 ### Example 4: Using `kstream` to extract kmers
 
 `kstream` is an extremely flexible and powerful tool for extracting and parsing kmers from an input fasta file or input stream of sequences.
-Some of the available options are listed below, but see the help menu for a complete list.
+Some available options are listed below, but see the help menu for a complete list.
 
+`--kmers` allows the user to specify the length (or lengths) or kmers to extract.
 
-`--kmers` allows the user to specify the length (or lengths)
-or kmers to extract.
+`--disallow` allows the user to omit any kmers containing disallowed nucleotides. See `--allow` for its inverse.
 
-`--disallow` allows the user to omit any kmers containing
-disallowed nucleotides. See `--allow` for its inverse.
-
-`--map-softmask` will map all masked nucleotides (lowercase characters) back to
-uppercase characters in all kmers.
+`--map-softmask` will map all masked nucleotides (lowercase characters) back to uppercase characters in all kmers.
 
 `--omit-softmask` will omit any kmer containing soft-masked nucleotides
 
 `--complements` will add the complementary kmers to the stream
 
-`--canonicals` will only print out the "canonical" kmers, e.g. those which come
-first alphabetically.
+`--canonicals` will only print out the "canonical" kmers, e.g. those which come first alphabetically.
 
 `--sort` will sort the resulting stream
 
@@ -268,14 +270,12 @@ first alphabetically.
 
 #### Extracting complete sequences
 
-By default, `kstream` will parse a fasta file and print out every sequence if
-no kmer length is provided. For example:
+By default, `kstream` will parse a fasta file and print out every sequence if no kmer length is provided. For example:
 
 `kstream test_DNA.fasta`
 
-Will print out every sequence entry in the input file and disregard all header
-names (lines starting with '>'). If an input file is not given, then `kstream`
-listens to the standard input pipe.
+Will print every sequence entry in the input file and disregard all header  names (lines starting with '>').
+If an input file is not given, then `kstream` listens to the standard input pipe.
 The previous command can also be written as:
 
 `cat test_DNA.fasta | kstream`
@@ -288,8 +288,7 @@ to extract all 6-mers which don't contain "N" or "n", in sorted order:
 
 `kstream test_DNA.fasta --kmers 6 --disallow "Nn" --sort`
 
-If we only wanted the "canonical" kmers, then we could add the `--canonicals`
-flag:
+If we only wanted the "canonical" kmers, then we could add the `--canonicals` flag:
 
 `kstream test_DNA.fasta --kmers 6 --disallow "Nn" --sort --canonicals`
 
@@ -303,7 +302,7 @@ limiting.
 
 ## `krisp_vcf` 
 
-After the `krisp_fasta` python package has been installed, `krisp_vcf` should be available on the command line.
+After the `krisp` python package has been installed, `krisp_vcf` should be available on the command line.
 The help menu for `krisp_vcf` can be accessed with the `--help` option on the command line:
 
 ```
@@ -314,37 +313,37 @@ krisp_vcf --help
 ### Basic usage
 
 `krisp_vcf` requires a VCF file or a program and the reference FASTA file used to create it.
-It also requires a metadata TSV file with at least two columns: one containing sample IDs that match the column names in the VCF file and one with arbitrary values corresponding to which group each sample belongs to.
+It also requires a metadata CSV file with at least two columns: one containing sample IDs that match the column names in the VCF file and one with arbitrary values corresponding to which group each sample belongs to.
 The first few rows of the metadata file for the example data looks like this (extra spaces added to make it easier to read):
 
 ```
-sample_id   group
-9D1         NA1
-BS2014-584  NA1
-BS96        NA1
-CC1008      EU1
-CC1011      EU1
-CC1033      EU1
+sample_id,group
+9D1,NA1
+BS2014-584,NA1
+BS96,NA1
+CC1008,EU1
+CC1011,EU1
+CC1033,EU1
 ```
 
 Files used in the examples below can be found in the "test_data/krisp_vcf" of this repository.
 You can use them to test `krisp_vcf` using the example commands below.
 Here is a minimal command:
 
-`krisp_vcf metadata.tsv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1`
+`krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1`
 
 This will scan the variants in "variants.vcf" and look for diagnostic regions that distinguish samples labeled as "NA1", "NA2", or "EU1" from all other samples.
 The VCF file is provided with the option `--vcf` since it could also be piped standard input.
-Which group each sample is assigned to is defined by the "metadata.tsv" file.
-Since no output file was specified, TSV output is printed to the standard output and status updates are printed to standard error.
+Which group each sample is assigned to is defined by the "metadata.csv" file.
+Since no output file was specified, CSV output is printed to the standard output and status updates are printed to standard error.
 When run on the command line, both the output (standard out) and the status updates (standard error) are printed to the screen, which is not ideal most of the time.
-We can save the TSV output to a file by redirecting the output using `>` or using the `--out_tsv` option:
+We can save the CSV output to a file by redirecting the output using `>` or using the `--out_csv` option:
 
-`krisp_vcf metadata.tsv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_tsv test_out.tsv`
+`krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_csv test_out.csv`
 
 or
 
-`krisp_vcf metadata.tsv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 > test_out.tsv`
+`krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 > test_out.csv`
 
 While the program is running it prints status updates like this:
 
@@ -354,7 +353,8 @@ Undiagnostic| Unconserved | No primers  | NA1         | NA2         | EU1
 ```
 
 These numbers are counts of variant clusters considered and why they were determined to be not diagnostic or which group they are diagnostic for.
-The output of the program is saved in "test_out.tsv", which has many columns:
+
+The output of the program is saved in "test_out.csv", which has many columns:
 * "group": The group the region is diagnostic for
 * "chrom": The chromosome on the reference database 
 * "n_diag": The number of bases that are diagnostic in the region
@@ -367,9 +367,9 @@ This format is ideal for post-processing with bioinformatics tools and programmi
 
 ### The alignment output
 
-A more human-readable out can also be generated by supplying the `--out_align` option: 
+A more human-readable output format can also be generated by supplying the `--out_align` option: 
 
-`krisp_vcf metadata.tsv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_tsv test_out.tsv --out_align test_align.txt`
+`krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_csv test_out.csv --out_align test_align.txt`
 
 This prints each output as a plain text alignment with the Primer3 statistics like this:
 
@@ -407,7 +407,7 @@ The alignment uses the following syntax:
 
 Most of the commonly used settings of Primer3 can be set on the command line:
 
-`krisp_vcf metadata.tsv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_tsv test_out.tsv --out_align test_align.txt --amp_size 50 100 --gc_clamp 3`
+`krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_csv test_out.csv --out_align test_align.txt --amp_size 50 100 --gc_clamp 3`
 
 Note how the addition of `--amp_size 50 100 --gc_clamp 3` changes the size of amplicon returned and the kind of primers selected:
 
@@ -431,17 +431,17 @@ See the help menu with `krisp_vcf --help` for more Primer3 options.
 `krisp_vcf` can be made to run much faster by subsetting the input to specific chromosomes or positions of interest.
 To subset to a specific reference position (for all chromosomes), use the `--pos` option: 
 
-`krisp_vcf metadata.tsv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_tsv test_out.tsv --pos 100000 200000`
+`krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_csv test_out.csv --pos 100000 200000`
 
 To subset to a specific chromosome (a single sequence in the reference FASTA file, identified by its header), use the `--chroms` option: 
 
-`krisp_vcf metadata.tsv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_tsv test_out.tsv --chroms Phyram_PR-102_s0001`
+`krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_csv test_out.csv --chroms Phyram_PR-102_s0001`
 
 The `--pos` and `--chroms` options can be used together to subset to a specific position on a specific chromosome.
 
 If multiple processors are available on the computer running `krisp_vcf`, parallel processing can be enabled by specifying the number of processors to use using the `--cores` option:
 
-`krisp_vcf metadata.tsv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_tsv test_out.tsv --cores 4`
+`krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1 --out_csv test_out.csv --cores 4`
 
 
 ### Quality filtering
@@ -452,5 +452,5 @@ By default, variants much occur in 5 samples per group, be represented by at lea
 These defaults can be seen in the help menu displayed by `krisp_vcf --help`.
 Custom values can be set using the `--min_samples`, `--min_reads`, and `--min_geno_qual` options: 
 
-`krisp_vcf metadata.tsv reference.fasta --vcf variants.vcf --groups NA1 EU1 --out_tsv test_out.tsv --min_samples 3 --min_reads 30`
+`krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 EU1 --out_csv test_out.csv --min_samples 3 --min_reads 30`
 

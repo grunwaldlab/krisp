@@ -26,7 +26,7 @@ def _parse_group_data(metadata_path, groups=None, sample_col="sample_id", group_
     lists of sample names as items
     """
     # Read samples in each group
-    metadata = pandas.read_csv(metadata_path, sep='\t')
+    metadata = pandas.read_csv(metadata_path, sep=',')
     output = {}
     for index, row in metadata.iterrows():
         group = row[group_col]
