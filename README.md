@@ -243,7 +243,7 @@ CGCACAAGGACAAGTGCCACTAAACCAGCC,,AGCCCTGACGCAGATCATCCCGCGCTTACT
 GTAAGCGCGGGATGATCTGCGTCAGGGCTG,,GCTGGTTTAGTGGCACTTGTCCTTGTGCGT
 ```
 
-In this case, there is actually no distinction between the ingroup and outgroup iles as these are only required to differ in the diagnostic region which we specified to be of 0 length.
+In this case, there is actually no distinction between the ingroup and outgroup files as these are only required to differ in the diagnostic region which we specified to be of 0 length.
 
 
 ### Example 4: Using `kstream` to extract kmers
