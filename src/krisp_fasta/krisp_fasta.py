@@ -289,7 +289,6 @@ def main():
                               ingroup=ingroup,
                               find_primers=args.primer3)
 
-
         # Print end message
         if args.verbose:
             # Get end time

@@ -101,6 +101,33 @@ def mergeKmerFiles(filename0, filename1, output,
     writeAlignmentStream(alignments, output)
 
 
+def mergeKmerSingleCore(filename0, filename1, output):
+    """ Merge two kmer files to output file in parallel
+
+    Parameters
+    ----------
+    filename0 : str
+        Name of first kmer file to merge
+    filename1 : str
+        Name of second kmer file to merge
+    output : str
+        Name of output file to write
+    workdir : str, optional
+        Name of work directory to write temporary files
+
+    Returns
+    -------
+    None
+        Output file is written, None is returned
+    """
+    # Now merge these files together using cat
+    with open(output, "w") as fout:
+        # Merge
+        mergeKmerFiles(filename0, filename1, output)
+        # Return merged filename
+        return output
+
+
 def mergeKmerParallel(filename0, filename1, output,
                       parallel, workdir=None):
     """ Merge two kmer files to output file in parallel
@@ -186,7 +213,9 @@ def mergeKmerJob(in_queue, out_queue, verbose=True):
             start_t = time.time()
 
         # Merge files
-        mergeKmerParallel(filename0, filename1, output, parallel, workdir)
+        # Note that mergeKmerSingleCore is a temporary replacement for mergeKmerParallel which does not produce consistent results currently. See issue 17 on github for more details.
+        #mergeKmerParallel(filename0, filename1, output, parallel, workdir)
+        mergeKmerSingleCore(filename0, filename1, output)
 
         # Print verbosity
         if verbose:
