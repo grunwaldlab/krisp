@@ -111,7 +111,7 @@ def sortedKmersParallel(files, outputs, ampl_len, primer_left, primer_right,
 
     # Spawn jobs
     processes = []
-    for i in range(parallel):
+    for i in range(min([parallel, jobs])):
         # Spawn process
         p = multiprocessing.Process(target=sortedKmerJob, args=(job_queue,))
         # Start process and add to process queue
