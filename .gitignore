@@ -140,3 +140,5 @@ test_output
 test_data
 presentations
 .Rproj.user
+test_pinf_pmir_pipo
+.vscode
