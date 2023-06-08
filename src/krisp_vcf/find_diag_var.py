@@ -184,7 +184,9 @@ class GroupedVariant:
 
         # Filter samples based on data quality
         subset = [s for s in subset
-                  if variant.samples[s]['DP'] >= min_reads
+                  if variant.samples[s]['DP'] is not None
+                  and variant.samples[s]['DP'] >= min_reads
+                  and variant.samples[s]['GQ'] is not None
                   and variant.samples[s]['GQ'] >= min_geno_qual]
 
         # Count alleles
@@ -300,7 +302,9 @@ class GroupedVariant:
     @staticmethod
     def _subset_sample_counts(variant, subset, min_reads=10, min_geno_qual=40):
         """Number of samples passing filters in a given subset"""
-        return(sum([variant.samples[s]['DP'] >= min_reads
+        return(sum([variant.samples[s]['DP'] is not None
+                    and variant.samples[s]['DP'] >= min_reads
+                    and variant.samples[s]['GQ'] is not None
                     and variant.samples[s]['GQ'] >= min_geno_qual
                     for s in subset]))
 

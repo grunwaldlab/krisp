@@ -151,8 +151,8 @@ def main():
                         help="Output as dot-based alignments")
     parser.add_argument("-o", "--out_align", type=str, metavar='PATH',
                         help="Write results as human-readable alignments to a file (gzip supported). (default: do not write alignment output)")
-    parser.add_argument("-t", "--out_csv", type=str, metavar='PATH',
-                        help="Write results to as a CSV (tab-separated value) file (gzip supported). (default: print to screen (stdout))")
+    parser.add_argument("-s", "--out_csv", type=str, metavar='PATH',
+                        help="Write results to as a CSV (comma-separated value) file (gzip supported). (default: print to screen (stdout))")
     parser.add_argument("-w", "--workdir", type=str, metavar='PATH',
                         help="Work directory to place temporary files")
     parser.add_argument("-p", "--primer3", action=argparse.BooleanOptionalAction,
