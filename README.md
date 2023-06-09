@@ -447,7 +447,7 @@ If multiple processors are available on the computer running `krisp_vcf`, parall
 ### Quality filtering
 
 Since VCF files can contain erroneous variants depending on how they have been quality filtered.
-`kirsp_vcf` can do its own quality filtering of variants, allowing unfiltered variants to be used as input.
+`krisp_vcf` can do its own quality filtering of variants, allowing unfiltered variants to be used as input.
 By default, variants much occur in 5 samples per group, be represented by at least 10 reads in each of those samples, and have a genotype quality score of 40.
 These defaults can be seen in the help menu displayed by `krisp_vcf --help`.
 Custom values can be set using the `--min_samples`, `--min_reads`, and `--min_geno_qual` options: 
