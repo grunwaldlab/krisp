@@ -5,8 +5,8 @@ A python package for designing diagnostic CRISPR assays and other PCR-based diag
 
 ## Overview
 
-CRISPR diagnostic assays, such as SHERLOCK and DETECTR, require the designing of a crRNA which contains a spacer sequence unique to the taxon of interest.
-Most assays also require the design of primers for input nucleic acid pre-amplification, using techniques such as PCR, RPA, and LAMP.
+CRISPR diagnostic assays, such as SHERLOCK and DETECTR, require the design of a CRISPR guide RNA (crRNA) which contains a spacer sequence unique to the taxon of interest.
+Most assays also require the design of primers for nucleic acid pre-amplification, using techniques such as PCR, RPA, or LAMP.
 The increasing abundance of whole-genome sequence data can be leveraged to predict effective primers and diagnostic regions.
 This data typically takes the form of whole-genome sequences (FASTA files) or variant data from reads mapped to a reference (VCF files).
 The `krisp` package contains python functions and command line programs to infer diagnostic regions from either FASTA files or a VCF file plus a reference.
@@ -14,16 +14,16 @@ The `krisp_fasta` command uses a k-mer based approach on FASTA input and the `kr
 Both commands use optimized algorithms that take advantage of multiple CPUs and use minimal RAM.
 
 `krisp_fasta` searches for diagnostic regions by converting input genome data into sorted kmer tables which are then intersected to find conserved and unique regions.
-`krisp_fasta` allows the user to specify the desired length of the diagnostic region as well as the lengths of the conserved regions both upstream and downstream of the diagnostic region.
+`krisp_fasta` allows specification of the desired length of the diagnostic region as well as the lengths of the conserved regions both upstream and downstream of the diagnostic regions.
 This can be used to directly search for a diagnostic spacer sequence, e.g. a 28-nucleotide sequence which is conserved at every position except a single diagnostic position.
-Alternatively, one can search for conserved primer regions flanking a much larger diagnostic region, e.g. a 60 nucleotide diagnostic regions flanked by 32 nucleotide conserved regions upstream and downstream.
-When conserved primer regions are included in the search, primers can be designed with Primer3 and results filtered by the presence of viable primers. 
+Alternatively, one can search for conserved primer regions flanking a much larger diagnostic region, e.g. 60 nucleotide diagnostic regions flanked by 32 nucleotide conserved regions upstream and downstream.
+When conserved primer regions are included in the search, primers can be analyzed with Primer3 and results filtered by the presence of optimal primers. 
 
 `krisp_vcf` scans through a VCF file with the associated reference FASTA file to find clusters of one or more diagnostic variants.
-Assays can be inferred that distinguish two or more groups of samples in a single execution of the command.
-A sliding-window analysis of the variants search for locations where one or more variants unique and conserved to a group of samples are surrounded by conserved sequence or variants.
+Data can be scanned to distinguish two or more groups of samples in a single execution of the command.
+A sliding-window analysis of the variants searches for locations where one or more variants unique and conserved to a group of samples are surrounded by conserved sequence or variants.
 Once such locations are identified, the conserved consensus sequence for the target group is inferred by applying the variants to the reference sequence.
-Primer3 can then be used to identify primers in the conserved flanking regions and the regions are filtered by the ability to design primers.
+Primer3 can then be used to identify primers in the conserved flanking regions and the regions are sorted by the predicted quality of primers.
 
 
 ## Requirements
@@ -50,7 +50,7 @@ These should be installed automatically when `krisp` is installed.
 ### Downloading from github
 
 Alternatively, `krisp_fasta` can be installed from source utilizing the Makefile in this repository.
-Simply run in the root directory:
+Simply run the following command in the directory with the donwloaded source files:
 
 `make install` 
 
@@ -65,7 +65,7 @@ or
 
 ### What is included
 
-The `krisp` package is written in python, and when installed, provides a stand-alone command line utilities called `krisp_fasta` and `krisp_vcf`.
+The `krisp` package is written in python, and when installed, provides stand-alone command line utilities called `krisp_fasta` and `krisp_vcf`.
 All the functionality of `krisp_fasta` is provided through the command line and knowledge of python is not required.
 In all the examples below, `krisp_fasta` is executed through the command line.
 
@@ -73,16 +73,23 @@ In addition to `krisp_fasta` and `krisp_vcf`, installation also provides a secon
 `kstream` is a separate python program which extracts and parses kmers from an input fasta file.
 `krisp_fasta` utilizes `kstream` internally.
 Users of `krisp_fasta` are not required to use `kstream` directly.
-See examples below `kstream` usage.
+See examples below on `kstream` usage.
 
 All commands have help menus which can be activated by passing the `-h` or `--help` option to the program.
 
 
 ## `krisp_fasta`
 
+After the `krisp` python package has been installed, `krisp_fasta` should be available on the command line.
+The help menu for `krisp_fasta` can be accessed with the `--help` option on the command line:
+
+```
+krisp_fasta --help
+```
+
 ### Example 1: Searching for a spacer sequence
 
-In example 1, we will be directly searching for a spacer sequence for LwaCas13a, which accepts a 28-nucleotide spacer sequence and has the highest accuracy when the diagnostic SNP is at the 3rd rightmost position.
+In example 1, we will be directly searching for a spacer sequence for CAS13a LwaCas13a, which accepts a 28-nucleotide spacer sequence and has the highest accuracy when the diagnostic SNP is at the 3rd rightmost position.
 In this case, we are looking for a spacer which has the following form:
 
 {25 conserved nts}{1 diagnostic nt}{2 conserved nts}
@@ -132,7 +139,7 @@ krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 25 --conserved-
 In this example, all output is written to the terminal with the verbose information preceding the alignments.
 Internally, the verbose data is written to stderr, whereas the alignments are written to stdout, so `test_out.csv` will not contain the progress messages.
 
-A more human-readable alignment format can be outputted as well using the `--out_align` option:
+A more human-readable alignment format can be output as well using the `--out_align` option:
 
 ```
 krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 25 --conserved-right 2 --diagnostic 1 --out_align test_align.txt
@@ -177,7 +184,7 @@ Note that it is possible to have multiple sequences listed for a single file, wh
 
 ### Example 2: Searching for conserved primer regions
 
-`krisp_fasta` can search for conserved primer regions which span both the ingroup and outgroup and can use Primer3 to design primers in such regions.
+`krisp_fasta` can search for conserved primer regions which span both the ingroup and outgroup and can use Primer3 to design primers.
 The general formula is the same as in example 1, except that our conserved and diagnostic region will be longer.
 
 Let us assume that we are looking for an amplicon which is 100 nucleotides in total length, and contains at least 30 conserved nucleotides on each end where we can design primers.
@@ -188,7 +195,7 @@ krisp_fasta ingroup*.gz --outgroup outgroup*.gz --conserved-left 30 --conserved-
 ```
 
 This command was designed to be deliberately similar to that in example 1. 
-For convenience, `krisp_fasta`, when the conserved flanking regions are the same, one can simply specify `--conserved 30`.
+For convenience, `krisp_fasta`, when the conserved flanking regions are the same, we can simply specify `--conserved 30`.
 We can also specify the total amplicon length as opposed to calculating the diagnostic length: `--amplicon 100`.
 In which case, the above command is equivalent to:
 
@@ -214,19 +221,18 @@ Pair statistics:
  14.18463  0.0           0.0           94            84.32116    22.38359                  62.70608  -1.7976931348623157e+308 
 ```
 
-
 In this example, `krisp_fasta` finds two regions which specify our input constraints, although only the first is shown in the output above.
 Note that these alignments are actually reverse complements. 
 `krisp_fasta` assumes that the input genomes are double-stranded and creates the corresponding kmers for both strands, thus finding two solutions.
 
-The addition of the `--primer3` option causes Primer3 to be run on each potential region.
+The addition of the `--primer3` option causes Primer3 to be run for each potential region.
 When `--primer3` is used, only regions for which it was possible to find primers are included in the output.
 Additionally, the Primer3 statistics are included in the alignment and CSV output.
 
 ### Example 3: Using `krisp_fasta` in creative ways
 
 Users are encouraged to use `krisp_fasta` in any way that they seem fit.
-In this example, we will be using krisp to find all 60-mers which are critically conserved across a group of input files.
+In this example, we will be using krisp to find all 60-mers which are conserved across a group of input files.
 To do this, we will specify a conserved region of 30-nts in each direction and a diagnostic region of 0-nts.
 
 ```                                                                             
@@ -248,7 +254,7 @@ In this case, there is actually no distinction between the ingroup and outgroup 
 
 ### Example 4: Using `kstream` to extract kmers
 
-`kstream` is an extremely flexible and powerful tool for extracting and parsing kmers from an input fasta file or input stream of sequences.
+`kstream` is a flexible and powerful tool for extracting and parsing kmers from an input fasta file or input stream of sequences.
 Some available options are listed below, but see the help menu for a complete list.
 
 `--kmers` allows the user to specify the length (or lengths) or kmers to extract.
@@ -257,15 +263,15 @@ Some available options are listed below, but see the help menu for a complete li
 
 `--map-softmask` will map all masked nucleotides (lowercase characters) back to uppercase characters in all kmers.
 
-`--omit-softmask` will omit any kmer containing soft-masked nucleotides
+`--omit-softmask` will omit any kmer containing soft-masked nucleotides.
 
-`--complements` will add the complementary kmers to the stream
+`--complements` will add the complementary kmers to the stream.
 
 `--canonicals` will only print out the "canonical" kmers, e.g. those which come first alphabetically.
 
-`--sort` will sort the resulting stream
+`--sort` will sort the resulting stream.
 
-`--parallel` will utilize multiple cores to speed up extraction 
+`--parallel` will utilize multiple cores to speed up extraction.
 
 
 #### Extracting complete sequences
@@ -274,7 +280,7 @@ By default, `kstream` will parse a fasta file and print out every sequence if no
 
 `kstream test_DNA.fasta`
 
-Will print every sequence entry in the input file and disregard all header  names (lines starting with '>').
+Will print every sequence entry in the input file and disregard all header names (lines starting with '>').
 If an input file is not given, then `kstream` listens to the standard input pipe.
 The previous command can also be written as:
 
@@ -309,10 +315,9 @@ The help menu for `krisp_vcf` can be accessed with the `--help` option on the co
 krisp_vcf --help
 ```
 
-
 ### Basic usage
 
-`krisp_vcf` requires a VCF file or a program and the reference FASTA file used to create it.
+`krisp_vcf` requires a VCF file or a program and the reference genome in FASTA format used to create it.
 It also requires a metadata CSV file with at least two columns: one containing sample IDs that match the column names in the VCF file and one with arbitrary values corresponding to which group each sample belongs to.
 The first few rows of the metadata file for the example data looks like this (extra spaces added to make it easier to read):
 
