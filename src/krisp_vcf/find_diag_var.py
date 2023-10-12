@@ -35,6 +35,18 @@ def _parse_group_data(metadata_path, groups=None, sample_col="sample_id", group_
             output[group].append(sample)
         else:
             output[group] = [sample]
+    # Check if user-defined groups are present
+    if groups is not None:
+        missing_groups = [g for g in groups if g not in output.keys()]
+        if len(missing_groups) > 0:
+            raise ValueError((
+                f'One or more user-defined groups are not present in the metadata file:\n'
+                f'    {metadata_path}\n'
+                f'The following user-defined groups are not present:\n'                
+                f'    {", ".join(missing_groups)}\n'
+                f'The following groups are present in the metadata file:\n'
+                f'    {", ".join(output.keys())}'
+            ))
     # Subset to just groups of interest
     if groups is not None:
         output = {g: v for g, v in output.items() if g in groups}
