@@ -317,7 +317,7 @@ krisp_vcf --help
 
 ### Basic usage
 
-`krisp_vcf` requires a VCF file or a program and the reference genome in FASTA format used to create it.
+`krisp_vcf` requires VCF input (compressed or not) and the reference genome in FASTA format used to create it.
 It also requires a metadata CSV file with at least two columns: one containing sample IDs that match the column names in the VCF file and one with arbitrary values corresponding to which group each sample belongs to.
 The first few rows of the metadata file for the example data looks like this (extra spaces added to make it easier to read):
 
