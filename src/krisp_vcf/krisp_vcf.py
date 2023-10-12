@@ -1144,6 +1144,8 @@ def report_diag_region(vcf_path, contig, groups, reference, args, **kwargs):
         vcf_handle = pysam.VariantFile(vcf_path)
         variants = vcf_handle.fetch(contig['contig'], start=contig['start'], end=contig['end'])
     stats = defaultdict(int)
+    undiag_count = 0 # How many variants are not diagnositic and have therefore not been reported yet
+    update_interval = 1000 # How often stats on non-diagnostic variants are reported
     for region in find_diag_region(variants, groups, reference, **kwargs):
         if failure_event is not None and failure_event.is_set():
             logger.critical("Error detected in other worker process. Ending this process too.")
@@ -1157,7 +1159,15 @@ def report_diag_region(vcf_path, contig, groups, reference, args, **kwargs):
                 alignment = _print_alignment(region, reference, groups)
             yield {'result': output, 'stats': stats, 'alignment': alignment}
             stats = defaultdict(int)
+        else:
+            undiag_count += 1
+        if undiag_count >= update_interval:
+            yield {'result': None, 'stats': stats, 'alignment': None}
+            undiag_count = 0
+            stats = defaultdict(int)
     return None
+
+
 
 
 class ResultWriter:
@@ -1196,7 +1206,8 @@ class ResultWriter:
         print('| '.join(var_info + group_info), file=sys.stderr, end='\n' if end_line else '\r')
 
     def update_stats(self, output):
-        self.group_counts[output['result']['group']] += 1
+        if output['result'] is not None:
+            self.group_counts[output['result']['group']] += 1
         for stat, count in output['stats'].items():
             if stat in self.variant_counts:
                 self.variant_counts[stat] += count
@@ -1206,8 +1217,9 @@ class ResultWriter:
             self.out_align.writelines([x + '\n' for x in output] + ['\n'])
 
     def write(self, output):
-        self.print_result(output['result'])
-        self.write_alignment(output['alignment'])
+        if output['result'] is not None:
+            self.print_result(output['result'])
+            self.write_alignment(output['alignment'])
         self.update_stats(output)
         self.print_status()
 
