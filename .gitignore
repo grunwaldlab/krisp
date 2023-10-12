@@ -139,6 +139,11 @@ cProfile
 test_output
 test_data
 presentations
-.Rproj.user
+scratch
 test_pinf_pmir_pipo
 .vscode
+
+# Rstudio
+.Rproj.user
+*.Rproj
+.Rhistory
