@@ -21,7 +21,7 @@ HETERO_DELIM = '/'
 UNKNOWN_CHAR = '?'
 
 
-def _parse_group_data(metadata_path, groups=None, sample_col="sample_id", group_col="group"):
+def _parse_group_data(metadata_path, groups=None, sample_col="sample_id", group_col="group", min_samples=None):
     """Reads metadata file and returns dictionary with group IDs as keys and
     lists of sample names as items
     """
@@ -46,6 +46,14 @@ def _parse_group_data(metadata_path, groups=None, sample_col="sample_id", group_
                 f'    {", ".join(missing_groups)}\n'
                 f'The following groups are present in the metadata file:\n'
                 f'    {", ".join(output.keys())}'
+            ))
+    # Check that there are enough samples in all the groups
+    if min_samples is not None:
+        groups_with_too_few_samples = {k: len(v) for k, v in output.items() if k in groups and len(v) < min_samples}
+        if len(groups_with_too_few_samples) > 0:
+            raise ValueError((
+                f'One or more user-defined groups have fewer samples than `--min_samples`:\n'
+                f'    {", ".join([g + " (" + str(c) + ")" for g, c in groups_with_too_few_samples.items()])}'
             ))
     # Subset to just groups of interest
     if groups is not None:

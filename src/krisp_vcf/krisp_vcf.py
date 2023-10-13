@@ -1286,7 +1286,8 @@ def run_all():
 
     # Prepare input data
     reference = _parse_reference(args.reference)
-    groups = _parse_group_data(args.metadata, groups=args.groups, sample_col=args.sample_col, group_col=args.group_col)
+    groups = _parse_group_data(args.metadata, groups=args.groups, sample_col=args.sample_col,
+                               group_col=args.group_col, min_samples=args.min_samples)
     contigs = read_vcf_contigs(args.vcf, reference=reference, chunk_size=100000, flank_size=1000,
                                contig_subset=args.chroms, pos_subset=args.pos) #TODO base on amplicon size, need to add to args
     gz_path = args.vcf + '.gz'
