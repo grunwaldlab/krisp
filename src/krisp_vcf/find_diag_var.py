@@ -131,7 +131,8 @@ class GroupedVariant:
                  check_groups=False,
                  min_samples=5,
                  min_reads=10,
-                 min_geno_qual=40):
+                 min_geno_qual=40,
+                 min_freq=0.1):
         self.variant = variant
         if check_groups:  # optional check needed for reading from stdin
             self.groups = {g: [x for x in ids if x in variant.samples.keys()] for g, ids in groups.items()}
@@ -140,6 +141,7 @@ class GroupedVariant:
         self.min_samples = min_samples
         self.min_reads = min_reads
         self.min_geno_qual = min_geno_qual
+        self.min_freq = min_freq
 
         # Store basic info r
 
@@ -154,7 +156,8 @@ class GroupedVariant:
         self.allele_counts = self._allele_counts(variant, self.groups,
                                                  hetero=False,
                                                  min_reads=min_reads,
-                                                 min_geno_qual=min_geno_qual)
+                                                 min_geno_qual=min_geno_qual,
+                                                 min_freq=min_freq)
 
         # Store which alleles are conserved for each group
         self.conserved = self._conserved(min_samples=min_samples)
@@ -180,7 +183,7 @@ class GroupedVariant:
 
     @classmethod
     def _count_genotypes(cls, variant, subset=None, hetero=True, unknown=True,
-                         min_reads=0, min_geno_qual=0):
+                         min_reads=0, min_geno_qual=0, min_freq=0.1):
         """For a variant return the counts of genotypes for a subset of samples.
 
         Parameters
@@ -192,6 +195,16 @@ class GroupedVariant:
         hetero : bool
             If `False`, heterozygous variants are counted once for each
             haplotype allele instead of counting once as a pair (e.g. "A/T")
+        min_reads : int, optional
+            The minimum number of reads a sample have at the location of a
+            given variant.
+        min_geno_qual : int, optional
+            The minimum genotype quality score (phred scale). This corresponds
+            to the per-sample output in the VCF encoded as "GQ".
+        min_freq : float, optional
+            The minimum proportion of reads an allele must have to be considered real.
+            This is meant to counter sequencing errors.
+            If not set, the genotypes called in the VCF are used without considering read depth.
 
         Returns
         -------
@@ -218,7 +231,11 @@ class GroupedVariant:
                 # articles/6012243429531-GenotypeGVCFs-and-the-death-of-the-dot
                 alleles = UNKNOWN_CHAR
             else:
-                alleles = sorted(list(set(data.alleles)))
+                if min_freq is None:
+                    alleles = sorted(list(set(data.alleles)))
+                else:
+                    min_depth = sum(data['AD']) * min_freq
+                    alleles = sorted(list(set([variant.alleles[i] for i, d in enumerate(data['AD']) if d > 0 and d >= min_depth])))
                 alleles = [UNKNOWN_CHAR if a is None else a for a in alleles]
                 if hetero:
                     alleles = ["/".join(alleles)]
@@ -234,7 +251,7 @@ class GroupedVariant:
 
     @classmethod
     def _allele_counts(cls, variant, groups, hetero=True, unknown=True,
-                       min_reads=10, min_geno_qual=40):
+                       min_reads=10, min_geno_qual=40, min_freq=0.1):
         """For a given variant return the counts of each genotype for each
         group.
 
@@ -247,6 +264,16 @@ class GroupedVariant:
         hetero : bool
             If `False`, heterozygous variants are counted once for each
             haplotype allele instead of counting once as a pair (e.g. "A/T")
+        min_reads : int, optional
+            The minimum number of reads a sample have at the location of a
+            given variant.
+        min_geno_qual : int, optional
+            The minimum genotype quality score (phred scale). This corresponds
+            to the per-sample output in the VCF encoded as "GQ".
+        min_freq : float, optional
+            The minimum proportion of reads an allele must have to be considered real.
+            This is meant to counter sequencing errors.
+            If not set, the genotypes called in the VCF are used without considering read depth.
 
         Returns
         -------
@@ -260,7 +287,8 @@ class GroupedVariant:
                                                             hetero=hetero,
                                                             unknown=unknown,
                                                             min_reads=min_reads,
-                                                            min_geno_qual=min_geno_qual)
+                                                            min_geno_qual=min_geno_qual,
+                                                            min_freq=min_freq)
         return output
 
     def _conserved(self, min_samples=5):

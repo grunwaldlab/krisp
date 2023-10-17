@@ -684,8 +684,8 @@ def find_diag_region(variants,
                      min_samples=5,
                      min_reads=5,
                      min_geno_qual=30,
-                     min_map_qual=50,
-                     min_freq=0.95,
+                     min_map_qual=40,
+                     min_freq=0.1,
                      spacer_len=28,
                      tm = (53, 68),
                      gc = (40, 70),
@@ -737,14 +737,15 @@ def find_diag_region(variants,
         given variant.
     min_geno_qual : int, optional
         The minimum genotype quality score (phred scale). This corresponds
-        to the per-sample GATK output in the VCF encoded as "GQ".
+        to the per-sample output in the VCF encoded as "GQ".
     min_map_qual : int, optional
         The minimum root square mean mapping quality of reads supporting a
-        variant (phred scale). This corresponds to the per-variant GATK 
+        variant (phred scale). This corresponds to the per-variant
         output in the VCF encoded as "MQ".
     min_freq : float, optional
-        The proportion of reads a variant must have to be considered real.
+        The minimum proportion of reads an allele must have to be considered real.
         This is meant to counter sequencing errors.
+        If not set, the genotypes called in the VCF are used without considering read depth.
     spacer_len: int, optional
         The length of the spacer sequence that the crRNA will bind to and
         the primers will amplify.
@@ -764,7 +765,8 @@ def find_diag_region(variants,
     vcf_reader = GroupedVariant.from_vcf(variants, groups,
                                          min_samples=min_samples,
                                          min_reads=min_reads,
-                                         min_geno_qual=min_geno_qual)
+                                         min_geno_qual=min_geno_qual,
+                                         min_freq=min_freq)
     windower = GroupedRegion.sliding_window(vcf_reader,
                                             groups=groups.keys(),
                                             reference=reference,
@@ -931,6 +933,10 @@ def parse_command_line_args():
                         help='The number of reads a variant must be represented by in a given sample for the data of that sample to be considered. This corresponds to the per-sample GATK output in the VCF encoded as "DP". (default: %(default)s)')
     parser.add_argument('--min_geno_qual', type=int, default=40, metavar='INT',
                         help='The minimum genotype quality score (phred scale). This corresponds to the per-sample GATK output in the VCF encoded as "GQ". (default: %(default)s)')
+    parser.add_argument('--min_freq', type=float, default=0.1, metavar='PROP',
+                        help='The minimum proportion of reads an allele must have to be considered real. This is meant to counter sequencing errors. (default: %(default)s)')
+    parser.add_argument('--min_map_qual', type=int, default=40, metavar='INT',
+                        help='The minimum root square mean mapping quality of reads supporting a variant (phred scale). This corresponds to the per-variant output in the VCF encoded as "MQ". (default: %(default)s)')
     parser.add_argument('--min_bases', type=int, default=1, metavar='INT',
                         help='The minimum number of bases distinguishing the target group from other groups. (default: %(default)s)')
     parser.add_argument('--cores', type=int, default=1, metavar='INT',
@@ -1293,7 +1299,7 @@ def run_all():
     gz_path = args.vcf + '.gz'
     if os.path.isfile(gz_path):
         args.vcf = gz_path
-    search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'tm',
+    search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'min_map_qual', 'min_freq', 'tm',
                         'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases', 'gc_clamp', 'max_end_gc')
     search_args = {k: v for k, v in vars(args).items() if k in search_arg_names}
 
