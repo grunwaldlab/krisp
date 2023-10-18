@@ -866,19 +866,19 @@ def find_diag_region(variants,
         end_tmp_ref = region.variants[-1].variant.pos - 1 + consv_len_up['ref']
 
         # Are there no overlapping variants TODO: fix so this is not needed
-        all_vars = region.downstream + region.variants + region.upstream
-        var_starts = [x.variant.pos - 1 for x in all_vars]
-        var_ends = [x.variant.pos + x.variant.rlen - 2 for x in all_vars]
-        vars_in_range = [v for v, vs, ve in zip(all_vars, var_starts, var_ends) if start_tmp_ref <= ve <= end_tmp_ref or start_tmp_ref <= vs <= end_tmp_ref]
-        overlapping = False
-        for v1, v2 in zip(list(vars_in_range)[:-1], list(vars_in_range)[1:]):
-            if v1.variant.stop > v2.variant.start:
-                region.type = 'Overlapping'
-                overlapping = True
-                break
-        if overlapping:
-            yield region
-            continue
+        #all_vars = region.downstream + region.variants + region.upstream
+        #var_starts = [x.variant.pos - 1 for x in all_vars]
+        #var_ends = [x.variant.pos + x.variant.rlen - 2 for x in all_vars]
+        #vars_in_range = [v for v, vs, ve in zip(all_vars, var_starts, var_ends) if start_tmp_ref <= ve <= end_tmp_ref or start_tmp_ref <= vs <= end_tmp_ref]
+        #overlapping = False
+        #for v1, v2 in zip(list(vars_in_range)[:-1], list(vars_in_range)[1:]):
+        #    if v1.variant.stop > v2.variant.start:
+        #        region.type = 'Overlapping'
+        #        overlapping = True
+        #        break
+        #if overlapping:
+        #    yield region
+        #    continue
 
         # Run primer3 on group-specific template
         downstream_seq = region.sequence(reference=reference, start=start_tmp_ref, end=start_crrna_ref-1, group=region.group)
@@ -1149,7 +1149,11 @@ def _print_alignment(region, reference, groups):
     end = rev_range[1]
     group = region.group
     output = [f"## {chrom}:{start}-{end} is diagnostic for {region.group}\n"]
-    output += render_variant(seqs=group_seqs, ref=ref_seq, p3=region.p3, annots=oligos)
+    try:
+        output += render_variant(seqs=group_seqs, ref=ref_seq, p3=region.p3, annots=oligos)
+    except (IndexError, TypeError) as error:
+        output += ["CANNOT RENDER ALIGNMENT\n\nThis is a known bug we are trying to resolve."]
+        logger.info(f"Failed to render alignment of {chrom}:{start}-{end} diagnostic for {region.group}. This is a known bug we are trying to resolve.")
     output += ['\n']
 
     return output
