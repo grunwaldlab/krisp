@@ -688,7 +688,7 @@ def find_diag_region(variants,
                      min_map_qual=40,
                      min_var_qual=10,
                      min_freq=0.1,
-                     spacer_len=28,
+                     crrna_len=28,
                      tm = (53, 68),
                      gc = (40, 70),
                      amp_size=(80, 300),
@@ -696,9 +696,7 @@ def find_diag_region(variants,
                      max_sec_tm = 40,
                      gc_clamp=1,
                      max_end_gc=4,
-                     snp_offset=2,
-                     offset_left=0,
-                     offset_right=2):
+                     var_location=(4,16)):
     """Find regions with diagnostic variants
     
     Return information on regions that contain variants diagnostic for a subset
@@ -753,7 +751,7 @@ def find_diag_region(variants,
         The minimum proportion of reads an allele must have to be considered real.
         This is meant to counter sequencing errors.
         If not set, the genotypes called in the VCF are used without considering read depth.
-    spacer_len: int, optional
+    crrna_len: int, optional
         The length of the spacer sequence that the crRNA will bind to and
         the primers will amplify.
     offset_left : int, optional
@@ -768,7 +766,9 @@ def find_diag_region(variants,
         information on regions that contain variants diagnostic for a
         subset of samples. TBD.
     """
-    window_width = spacer_len - offset_right - offset_left
+    offset_left = var_location[0] - 1
+    offset_right = crrna_len - var_location[1]
+    window_width = crrna_len - offset_right - offset_left
     vcf_reader = GroupedVariant.from_vcf(variants, groups,
                                          min_samp_prop=min_samp_prop,
                                          min_samples=min_samples,
@@ -792,7 +792,7 @@ def find_diag_region(variants,
             yield region
             continue
 
-        # Are all the variants in the spacer conserved?
+        # Are all the variants in the crRNA conserved?
         if any([x is None for x in region.conserved()]):
             region.type = 'Unconserved'
             yield region
@@ -816,7 +816,7 @@ def find_diag_region(variants,
         #      yield region
 
         # Is there conserved adjacent sequence for the crRNA?
-        overhang_left = spacer_len - region.region_length() - offset_right
+        overhang_left = crrna_len - region.region_length() - offset_right
         overhang_right = offset_right
         overhang_len_up = consv_border_n(group=region.group,
                                          border_var=region.variants[-1],
@@ -937,8 +937,8 @@ def parse_command_line_args():
                         help='One or more chromosomes (reference fasta headers) to restrict the search to. (default: use all chromosomes)')
     parser.add_argument('--pos', type=int, nargs=2, metavar='INT', default=None,
                         help='The range of indexes (1-based) of positions in the reference sequences to search. (default: search whole chromosome)')
-    parser.add_argument('--min_samples', type=int, default=5, metavar='INT',
-                        help='The number of samples with acceptable data (see `--min_reads`) each group must have for a given variant. (default: %(default)s)')
+    parser.add_argument('--min_samples', type=int, default=3, metavar='INT',
+                        help='The number of samples with data passing quality filters each group must have for a given variant. (default: %(default)s)')
     parser.add_argument('--min_samp_prop', type=float, default=0.9, metavar='PROP',
                         help='The minimum proportion of samples that must contain a diagnositc variant in each group. (default: %(default)s)')
     parser.add_argument('--min_reads', type=int, default=10, metavar='INT',
@@ -959,6 +959,10 @@ def parse_command_line_args():
                         help='The location to save a log file containing information, warnings, and errors. (default: print to screen via stderr)')
     parser.add_argument('--log_level', type=str, choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help='The minimum importance level of messages to print to the log. (default: INFO if the log is being saved to a file with --log, otherwise WARNING)')
+    parser.add_argument('--var_location', type=int, nargs=2, metavar='INT', default=[6, 14],
+                        help="The range of acceptable locations for diagnostic variants in the crRNA, measured from the 5' end. (default: %(default)s)")
+    parser.add_argument('--crrna_len', type=int, default=28, metavar='INT',
+                        help='Then length of the crRNA. (default: %(default)s)')
     parser.add_argument('--tm', type=int, nargs=2, metavar='INT', default=[53, 68],
                         help='The minimum and maximum melting temperature when searching for primers. (default: %(default)s)')
     parser.add_argument('--gc', type=int, nargs=2, metavar='INT', default=[40, 70],
@@ -1317,8 +1321,8 @@ def run_all():
     gz_path = args.vcf + '.gz'
     if os.path.isfile(gz_path):
         args.vcf = gz_path
-    search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'min_map_qual', 'min_var_qual', 'min_freq', 'min_samp_prop', 'tm',
-                        'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases', 'gc_clamp', 'max_end_gc')
+    search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'min_map_qual', 'min_var_qual', 'min_freq', 'min_samp_prop',
+                        'var_location', 'crrna_len', 'tm', 'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases', 'gc_clamp', 'max_end_gc')
     search_args = {k: v for k, v in vars(args).items() if k in search_arg_names}
 
     if args.vcf != "-" and args.cores > 1:
