@@ -109,27 +109,34 @@ def _pad_sequences(seqs, ref, annots):
     return seqs, ref, annot_out
 
 
-def _print_align(seqs, ref, annot_text, ref_name="Reference"):
+def _print_align(seqs, ref, annot_text, groups, ref_name="Reference"):
     """Adjusts labels, prints reference and sequences
     """
 
 
-    def _print_one_line(seqs, ref, ref_name="Reference"):
+    def _print_one_line(seqs, ref, groups, ref_name="Reference"):
         """Repeated function to print the output format"""
+        # Get counts of each group to print
+        group_counts = {g: str(len(v)) for g, v in groups.items()}
+        max_count_len = max([len(n) for n in group_counts.values()])
+
         # Get max length of labels
-        labels = list(seqs.keys()) + [ref_name]
-        max_len = max([len(seq) for seq in labels])
+        labels = {k: f'{k} ({group_counts[k]})' if k in group_counts else f'{k}' for k in seqs.keys()}
+        max_len = max([len(label) for label in list(labels.values()) + [ref_name]])
 
         # Print alignment
         output = []
         ref_name = ref_name.rjust(max_len, " ")
-        output.append(f"{ref_name} : " + ''.join(ref))
+        #import pdb; pdb.set_trace()
+
+
+        output.append(f"{ref_name}: " + ''.join(ref))
         for group_name, seq in seqs.items():
-            group_name = group_name.rjust(max_len, " ")
-            output.append(f"{group_name} : " + ''.join(seq))
+            group_text = labels[group_name].rjust(max_len, " ")
+            output.append(f"{group_text}: " + ''.join(seq))
 
         # Print annotation names
-        output.append(' ' * (max_len + 3) + ''.join(annot_text))
+        output.append(' ' * (max_len + 2) + ''.join(annot_text))
         # ref_len = sum([len(x) for x in ref])
         # annot_line = ([" "] * ref_len)
         # for annot in annots:
@@ -164,7 +171,7 @@ def _print_align(seqs, ref, annot_text, ref_name="Reference"):
     output = []
     for index in range(len(chunked_ref)):
         row_seqs = {k: v[index] for k, v in chunked_seqs.items()}
-        output.extend(_print_one_line(row_seqs, chunked_ref[index], ref_name=ref_name))
+        output.extend(_print_one_line(row_seqs, chunked_ref[index], groups, ref_name=ref_name))
     return output
 
 
@@ -216,7 +223,7 @@ def _render_primer3_stats(p3):
     return output
 
 
-def render_variant(seqs, ref, p3, annots=None):
+def render_variant(seqs, ref, p3, groups, annots=None):
     """Displaying diagnostic variant in human-readable form
 
     Parameters
@@ -242,7 +249,7 @@ def render_variant(seqs, ref, p3, annots=None):
     if annots is not None:
         seqs["oligos"] = format_seq_annot(annots, ref)
     seqs, ref, annot_text = _pad_sequences(seqs, ref, annots)
-    output = _print_align(seqs, ref, annot_text)
+    output = _print_align(seqs, ref, annot_text, groups)
 
     # Make Primer3 output
     output += [_render_primer3_stats(p3)]

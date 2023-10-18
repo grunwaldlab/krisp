@@ -1150,7 +1150,7 @@ def _print_alignment(region, reference, groups):
     group = region.group
     output = [f"## {chrom}:{start}-{end} is diagnostic for {region.group}\n"]
     try:
-        output += render_variant(seqs=group_seqs, ref=ref_seq, p3=region.p3, annots=oligos)
+        output += render_variant(seqs=group_seqs, ref=ref_seq, p3=region.p3, groups=groups, annots=oligos)
     except (IndexError, TypeError) as error:
         output += ["CANNOT RENDER ALIGNMENT\n\nThis is a known bug we are trying to resolve."]
         logger.info(f"Failed to render alignment of {chrom}:{start}-{end} diagnostic for {region.group}. This is a known bug we are trying to resolve.")
