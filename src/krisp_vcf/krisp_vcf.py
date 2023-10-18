@@ -681,6 +681,7 @@ def find_diag_region(variants,
                      primer3=False,
                      min_vars=1,
                      min_bases=1,
+                     min_samp_prop=0.9,
                      min_samples=5,
                      min_reads=5,
                      min_geno_qual=30,
@@ -729,6 +730,8 @@ def find_diag_region(variants,
         The minimum ngroupsumber of diagnostic nucleotides. Note that a single
         indel variant can represent multiple diagnostic nucleotides.
         See `min_vars` to filter based on number of variants.
+    min_samp_prop : float, optional
+        The minimum proportion of samples that must contain a diagnositc variant in each group
     min_samples : int, optional
         The minimum number of samples that must represent each group in
         `groups` for a given variants. Samples must pass the `min_reads` 
@@ -767,6 +770,7 @@ def find_diag_region(variants,
     """
     window_width = spacer_len - offset_right - offset_left
     vcf_reader = GroupedVariant.from_vcf(variants, groups,
+                                         min_samp_prop=min_samp_prop,
                                          min_samples=min_samples,
                                          min_reads=min_reads,
                                          min_geno_qual=min_geno_qual,
@@ -935,6 +939,8 @@ def parse_command_line_args():
                         help='The range of indexes (1-based) of positions in the reference sequences to search. (default: search whole chromosome)')
     parser.add_argument('--min_samples', type=int, default=5, metavar='INT',
                         help='The number of samples with acceptable data (see `--min_reads`) each group must have for a given variant. (default: %(default)s)')
+    parser.add_argument('--min_samp_prop', type=float, default=0.9, metavar='PROP',
+                        help='The minimum proportion of samples that must contain a diagnositc variant in each group. (default: %(default)s)')
     parser.add_argument('--min_reads', type=int, default=10, metavar='INT',
                         help='The number of reads a variant must be represented by in a given sample for the data of that sample to be considered. This corresponds to the per-sample GATK output in the VCF encoded as "DP". (default: %(default)s)')
     parser.add_argument('--min_geno_qual', type=int, default=40, metavar='INT',
@@ -1307,7 +1313,7 @@ def run_all():
     gz_path = args.vcf + '.gz'
     if os.path.isfile(gz_path):
         args.vcf = gz_path
-    search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'min_map_qual', 'min_var_qual', 'min_freq', 'tm',
+    search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'min_map_qual', 'min_var_qual', 'min_freq', 'min_samp_prop', 'tm',
                         'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases', 'gc_clamp', 'max_end_gc')
     search_args = {k: v for k, v in vars(args).items() if k in search_arg_names}
 

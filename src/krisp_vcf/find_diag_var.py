@@ -129,6 +129,7 @@ class GroupedVariant:
     
     def __init__(self, variant, groups,
                  check_groups=False,
+                 min_samp_prop=0.9,
                  min_samples=5,
                  min_reads=10,
                  min_geno_qual=40,
@@ -162,12 +163,14 @@ class GroupedVariant:
                                                  min_freq=min_freq)
 
         # Store which alleles are conserved for each group
-        self.conserved = self._conserved(min_samples=min_samples,
+        self.conserved = self._conserved(min_samp_prop=min_samp_prop,
+                                         min_samples=min_samples,
                                          min_map_qual=min_map_qual,
                                          min_var_qual=min_var_qual)
 
         # Store which alleles are diagnostic for each group
-        self.diagnostic = self._diagnostic(min_samples=min_samples,
+        self.diagnostic = self._diagnostic(min_samp_prop=min_samp_prop,
+                                           min_samples=min_samples,
                                            min_map_qual=min_map_qual,
                                            min_var_qual=min_var_qual)
 
@@ -297,7 +300,7 @@ class GroupedVariant:
                                                             min_freq=min_freq)
         return output
 
-    def _conserved(self, min_samples=5, min_map_qual=30, min_var_qual=10):
+    def _conserved(self, min_samp_prop=0.9, min_samples=5, min_map_qual=30, min_var_qual=10):
         """Check if an allele is conserved for each group
 
         Return
@@ -316,13 +319,14 @@ class GroupedVariant:
         # Cant determine if conserved if too few samples
         output = {}
         for group, counts in self.allele_counts.items():
-            if len(counts) == 1 and self.sample_counts[group] >= min_samples:
+            samp_prop = self.sample_counts[group] / len(self.groups[group])
+            if len(counts) == 1 and self.sample_counts[group] >= min_samples and samp_prop >= min_samp_prop:
                 output[group] = list(counts.keys())[0]
             else:
                 output[group] = None
         return output
 
-    def _diagnostic(self, min_samples=5, min_map_qual=30, min_var_qual=10):
+    def _diagnostic(self, min_samp_prop=0.9, min_samples=5, min_map_qual=30, min_var_qual=10):
         """
         Get conserved variants only present in each group.
         
@@ -345,6 +349,10 @@ class GroupedVariant:
 
         # Cant determine if variant quality (QUAL column) is too low
         if self.variant.qual < min_var_qual:
+            return {group: None for group in self.groups.keys()}
+
+        # If there are not enough samples for any group, no diagnostic variants found
+        if any([n < min_samples or n / len(self.groups[g]) < min_samp_prop for g, n in self.sample_counts.items()]):
             return {group: None for group in self.groups.keys()}
 
         # If there are not enough samples for any group, no diagnostic variants found
