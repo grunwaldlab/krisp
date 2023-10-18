@@ -132,7 +132,9 @@ class GroupedVariant:
                  min_samples=5,
                  min_reads=10,
                  min_geno_qual=40,
-                 min_freq=0.1):
+                 min_freq=0.1,
+                 min_map_qual=30,
+                 min_var_qual=10):
         self.variant = variant
         if check_groups:  # optional check needed for reading from stdin
             self.groups = {g: [x for x in ids if x in variant.samples.keys()] for g, ids in groups.items()}
@@ -143,7 +145,7 @@ class GroupedVariant:
         self.min_geno_qual = min_geno_qual
         self.min_freq = min_freq
 
-        # Store basic info r
+        # Store basic info
 
         # Store counts of samples for each group
         #   Note: this can be different from the sum of counts in allele_counts
@@ -160,10 +162,14 @@ class GroupedVariant:
                                                  min_freq=min_freq)
 
         # Store which alleles are conserved for each group
-        self.conserved = self._conserved(min_samples=min_samples)
+        self.conserved = self._conserved(min_samples=min_samples,
+                                         min_map_qual=min_map_qual,
+                                         min_var_qual=min_var_qual)
 
         # Store which alleles are diagnostic for each group
-        self.diagnostic = self._diagnostic(min_samples=min_samples)
+        self.diagnostic = self._diagnostic(min_samples=min_samples,
+                                           min_map_qual=min_map_qual,
+                                           min_var_qual=min_var_qual)
 
     @classmethod
     def from_vcf(cls, variants, groups, **kwargs):
@@ -291,7 +297,7 @@ class GroupedVariant:
                                                             min_freq=min_freq)
         return output
 
-    def _conserved(self, min_samples=5):
+    def _conserved(self, min_samples=5, min_map_qual=30, min_var_qual=10):
         """Check if an allele is conserved for each group
 
         Return
@@ -299,6 +305,15 @@ class GroupedVariant:
         dict of str/None
             Groups as keys, allele/None as value
         """
+        # Cant determine if RMS mapping quality is too low
+        if self.variant.info['MQ'] < min_map_qual:
+            return {group: None for group in self.groups.keys()}
+
+        # Cant determine if variant quality (QUAL column) is too low
+        if self.variant.qual < min_var_qual:
+            return {group: None for group in self.groups.keys()}
+
+        # Cant determine if conserved if too few samples
         output = {}
         for group, counts in self.allele_counts.items():
             if len(counts) == 1 and self.sample_counts[group] >= min_samples:
@@ -307,7 +322,7 @@ class GroupedVariant:
                 output[group] = None
         return output
 
-    def _diagnostic(self, min_samples=5):
+    def _diagnostic(self, min_samples=5, min_map_qual=30, min_var_qual=10):
         """
         Get conserved variants only present in each group.
         
@@ -324,9 +339,18 @@ class GroupedVariant:
             For each group, the alleles that are conserved and unique to
             that group.
         """
+        # Cant determine if RMS mapping quality is too low
+        if self.variant.info['MQ'] < min_map_qual:
+            return {group: None for group in self.groups.keys()}
+
+        # Cant determine if variant quality (QUAL column) is too low
+        if self.variant.qual < min_var_qual:
+            return {group: None for group in self.groups.keys()}
+
         # If there are not enough samples for any group, no diagnostic variants found
         if any([n < min_samples for n in self.sample_counts.values()]):
             return {group: None for group in self.groups.keys()}
+
         # Get alleles for each groups
         alleles = {}
         for g in self.groups.keys():
