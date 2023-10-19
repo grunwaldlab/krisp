@@ -1099,6 +1099,7 @@ def _format_for_csv(region, reference, groups):
 
     # Modify these values to change columns and their names:
     output = {
+        "region_id": f'{chrom}:{fwd_start}-{rev_end}',
         "group": group,
         "chrom": chrom,
         "n_diag": n_diag,
