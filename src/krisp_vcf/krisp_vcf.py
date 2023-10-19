@@ -773,6 +773,7 @@ def find_diag_region(variants,
     offset_left = var_location[0] - 1
     offset_right = crrna_len - var_location[1]
     window_width = crrna_len - offset_right - offset_left
+
     vcf_reader = GroupedVariant.from_vcf(variants, groups,
                                          min_samp_prop=min_samp_prop,
                                          min_samples=min_samples,

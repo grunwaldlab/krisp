@@ -138,7 +138,13 @@ class GroupedVariant:
                  min_var_qual=10):
         self.variant = variant
         if check_groups:  # optional check needed for reading from stdin
-            self.groups = {g: [x for x in ids if x in variant.samples.keys()] for g, ids in groups.items()}
+            metadata_samples = {val for values in groups.values() for val in values}
+            vcf_samples = set(variant.samples.keys())
+            missing_in_vcf = metadata_samples - vcf_samples
+            missing_in_meta = vcf_samples - metadata_samples
+            raise ValueError(f'The following samples specified in the metadata cannot be found in the VCF input:\n'
+                             f'    {", ".join(missing_in_vcf)}\n')
+            #self.groups = {g: [x for x in ids if x in variant.samples.keys()] for g, ids in groups.items()}
         else:
             self.groups = groups
         self.min_samples = min_samples
