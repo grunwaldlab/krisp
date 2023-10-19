@@ -151,9 +151,11 @@ class GroupedVariant:
         # Store counts of samples for each group
         #   Note: this can be different from the sum of counts in allele_counts
         #   below due to heterozygous positions
-        self.sample_counts = self._sample_counts(variant, self.groups,
+        count_data = self._sample_counts(variant, self.groups,
                                                  min_reads=min_reads,
                                                  min_geno_qual=min_geno_qual)
+        self.sample_counts = count_data['counts']
+        self.missing_samp_ids = count_data['missing']
 
         # Store counts of each allele for each group
         self.allele_counts = self._allele_counts(variant, self.groups,
@@ -355,10 +357,6 @@ class GroupedVariant:
         if any([n < min_samples or n / len(self.groups[g]) < min_samp_prop for g, n in self.sample_counts.items()]):
             return {group: None for group in self.groups.keys()}
 
-        # If there are not enough samples for any group, no diagnostic variants found
-        if any([n < min_samples for n in self.sample_counts.values()]):
-            return {group: None for group in self.groups.keys()}
-
         # Get alleles for each groups
         alleles = {}
         for g in self.groups.keys():
@@ -382,21 +380,26 @@ class GroupedVariant:
     @staticmethod
     def _subset_sample_counts(variant, subset, min_reads=10, min_geno_qual=40):
         """Number of samples passing filters in a given subset"""
-        return(sum([variant.samples[s]['DP'] is not None
+        is_good = {s: variant.samples[s]['DP'] is not None
                     and variant.samples[s]['DP'] >= min_reads
                     and variant.samples[s]['GQ'] is not None
                     and variant.samples[s]['GQ'] >= min_geno_qual
-                    for s in subset]))
+                    for s in subset}
+        missing_samp_ids = {k for k, v in is_good.items() if not v}
+        return {"counts": sum(is_good.values()), "missing": missing_samp_ids}
 
     @classmethod
     def _sample_counts(cls, variant, groups, min_reads=10, min_geno_qual=40):
         """Number of samples in each group"""
-        output = {}
+        counts = {}
+        missing_samp_ids = {}
         for group, samples in groups.items():
-            output[group] = cls._subset_sample_counts(variant, samples,
+            output = cls._subset_sample_counts(variant, samples,
                                                       min_reads=min_reads,
                                                       min_geno_qual= min_geno_qual)
-        return output
+            counts[group] = output['counts']
+            missing_samp_ids[group] = output['missing']
+        return {'counts': counts, 'missing': missing_samp_ids}
 
     def allele_lens(self, group):
         """Number of nucleotides of each allele

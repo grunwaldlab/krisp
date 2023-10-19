@@ -666,6 +666,10 @@ class DiagosticRegion(GroupedRegion):
                                              offset=self.p3['PRIMER_RIGHT_0'][0])
         return [start, end]
 
+    def missing_samples(self):
+        diag_vars = [var for var in self.variants if var.diagnostic[self.group] is not None]
+        return {id for var in diag_vars for ids in var.missing_samp_ids.values() for id in ids}
+
     # def crrna_range(self):
     #     """Start/stop reference sequence indexes of the crRNA."""
     #     # start = self.ref_pos_from_group_offset(ref_pos=self.temp_range[0], offset=self.p3['PRIMER_INTERNAL_0'][0])
@@ -1088,11 +1092,17 @@ def _format_for_csv(region, reference, groups):
     seq_primer_right = format_seq(start=rev_range[0], end=rev_range[1])
     seq_adj_right = format_seq(start=rev_range[1] + 1, end=temp_range[1])
 
+    missing = region.missing_samples()
+    missing_samp_ids = ';'.join(missing)
+    missing_count = len(missing)
+
+
     # Modify these values to change columns and their names:
     output = {
         "group": group,
         "chrom": chrom,
         "n_diag": n_diag,
+        "n_missing": missing_count,
         "reg_from": seq_start,
         "reg_to": seq_end,
         "diag_from": crrna_start,
@@ -1101,6 +1111,7 @@ def _format_for_csv(region, reference, groups):
         "fwd_to": fwd_end,
         "rev_from": rev_start,
         "rev_to": rev_end,
+        "missing_samp_ids": missing_samp_ids,
         "seq_adj_left": seq_adj_left,
         "seq_primer_fwd": seq_primer_left,
         "seq_inter_left": seq_amp_left,
@@ -1149,8 +1160,8 @@ def _print_alignment(region, reference, groups):
     ]
 
     chrom = list(region.reference.keys())[0]
-    start = fwd_range[0]
-    end = rev_range[1]
+    start = fwd_range[0] + 1
+    end = rev_range[1] + 1
     group = region.group
     output = [f"## {chrom}:{start}-{end} is diagnostic for {region.group}\n"]
     try:
