@@ -700,7 +700,8 @@ def find_diag_region(variants,
                      max_sec_tm = 40,
                      gc_clamp=1,
                      max_end_gc=4,
-                     var_location=(4,16)):
+                     var_location=(4,16),
+                     force=False):
     """Find regions with diagnostic variants
     
     Return information on regions that contain variants diagnostic for a subset
@@ -781,7 +782,8 @@ def find_diag_region(variants,
                                          min_geno_qual=min_geno_qual,
                                          min_freq=min_freq,
                                          min_map_qual=min_map_qual,
-                                         min_var_qual=min_var_qual)
+                                         min_var_qual=min_var_qual,
+                                         force=force)
     windower = GroupedRegion.sliding_window(vcf_reader,
                                             groups=groups.keys(),
                                             reference=reference,
@@ -982,6 +984,8 @@ def parse_command_line_args():
                         help="Require the specified number of consecutive Gs and Cs at the 3' end of both the left and right primer. (default: %(default)s)")
     parser.add_argument('--max_end_gc', type=int, default=4, metavar='INT',
                         help="The maximum number of Gs or Cs allowed in the last five 3' bases of a left or right primer. (default: %(default)s)")
+    parser.add_argument('--force', action='store_true', default=False,
+                        help="Try to continue executing when the program would typically quit.")
     args = parser.parse_args()
 
     return args
@@ -1334,8 +1338,9 @@ def run_all():
     gz_path = args.vcf + '.gz'
     if os.path.isfile(gz_path):
         args.vcf = gz_path
-    search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'min_map_qual', 'min_var_qual', 'min_freq', 'min_samp_prop',
-                        'var_location', 'crrna_len', 'tm', 'gc', 'primer_size', 'amp_size', 'max_sec_tm', 'min_bases', 'gc_clamp', 'max_end_gc')
+    search_arg_names = ('min_samples', 'min_reads', 'min_geno_qual', 'min_map_qual', 'min_var_qual', 'min_freq',
+                        'min_samp_prop', 'var_location', 'crrna_len', 'tm', 'gc', 'primer_size', 'amp_size',
+                        'max_sec_tm', 'min_bases', 'gc_clamp', 'max_end_gc', 'force')
     search_args = {k: v for k, v in vars(args).items() if k in search_arg_names}
 
     if args.vcf != "-" and args.cores > 1:
