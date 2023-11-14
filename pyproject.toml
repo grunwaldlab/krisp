@@ -28,7 +28,7 @@ dependencies = [
     "prettytable",
     "pandas",
     "prettytable",
-    "primer3"
+    "primer3-py"
 ]
 
 [project.urls]
