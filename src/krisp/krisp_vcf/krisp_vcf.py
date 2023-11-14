@@ -8,7 +8,6 @@ import pysam
 import re
 import itertools
 import multiprocessing as mp
-import pdb  # NOTE: remove for production code
 import queue
 
 from collections import deque, defaultdict
@@ -99,19 +98,19 @@ def configure_subprocess_logger(queue):
     return logger
 
 
-class ForkedPdb(pdb.Pdb):
-    """A Pdb subclass that may be used
-    from a forked multiprocessing child
-
-    https://stackoverflow.com/questions/4716533/how-to-attach-debugger-to-a-python-subproccess/23654936#23654936
-    """
-    def interaction(self, *args, **kwargs):
-        _stdin = sys.stdin
-        try:
-            sys.stdin = open('/dev/stdin')
-            pdb.Pdb.interaction(self, *args, **kwargs)
-        finally:
-            sys.stdin = _stdin
+#class ForkedPdb(pdb.Pdb):
+#    """A Pdb subclass that may be used
+#    from a forked multiprocessing child
+#
+#    https://stackoverflow.com/questions/4716533/how-to-attach-debugger-to-a-python-subproccess/23654936#23654936
+#    """
+#    def interaction(self, *args, **kwargs):
+#        _stdin = sys.stdin
+#        try:
+#            sys.stdin = open('/dev/stdin')
+#            pdb.Pdb.interaction(self, *args, **kwargs)
+#        finally:
+#            sys.stdin = _stdin
 
 
 def collapse_to_iupac(seqs):

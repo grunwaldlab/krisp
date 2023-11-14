@@ -4,7 +4,7 @@ import argparse
 import time
 import multiprocessing
 import subprocess
-from kstream import kstream
+from ..kstream import kstream
 from .intersectAmplicons import mergeFiles
 from .outputAlignments import render_output
 from .shared import *

@@ -837,7 +837,6 @@ def parseArgs(sys_args):
     parser = argparse.ArgumentParser(
             description=("Read and parse kmers from fasta or kmer stream\n"
                          "Compatible with gz, bz2, and stdin."),
-            epilog="Hope this helped.",
             prog="kstream",
             formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument(

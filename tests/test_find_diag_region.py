@@ -1,6 +1,6 @@
-from diagvar.find_diag_var import *
-from diagvar.find_diag_var import _parse_group_data, _check_variant, GroupedVariant
-from diagvar.find_diag_region import GroupedRegion, find_diag_region
+from krisp_vcf.find_diag_var import *
+from krisp_vcf.find_diag_var import _parse_group_data, _check_variant, GroupedVariant
+from krisp_vcf.find_diag_region import GroupedRegion, find_diag_region
 import pysam
 from itertools import islice
 import unittest
