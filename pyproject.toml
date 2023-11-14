@@ -4,11 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "krisp"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
   { name="Zachary S.L. Foster", email="zacharyfoster1989@gmail.com" },
-  { name="Andrew S. Tupper" },
-  { name="Niklaus J. Grunwald" },
+  { name="Andrew S. Tupper", email="andrew.s.tupper@gmail.com" },
+  { name="Niklaus J. Grunwald", email="niklaus.grunwald@oregonstate.edu" },
+]
+maintainers = [
+  { name="Zachary S.L. Foster", email="zacharyfoster1989@gmail.com" },
 ]
 description = "A lightweight tool for finding diagnostic regions in whole genome data"
 readme = "README.md"
@@ -24,7 +27,8 @@ dependencies = [
     "nltk",
     "prettytable",
     "pandas",
-    "prettytable"
+    "prettytable",
+    "primer3"
 ]
 
 [project.urls]
