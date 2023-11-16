@@ -1,6 +1,6 @@
 # krisp
 
-A python package for designing diagnostic CRISPR assays and other PCR-based diagnostic assays using whole genome data.
+A python package for designing diagnostic CRISPR and other PCR-based diagnostic assays using whole genome data.
 
 
 ## Overview
