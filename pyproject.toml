@@ -30,7 +30,7 @@ dependencies = [
     "prettytable",
     "pandas",
     "prettytable",
-    "primjer3-py",
+    "primer3-py",
     "colorama"
 ]
 
