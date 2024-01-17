@@ -42,15 +42,15 @@ These should be installed automatically when `krisp` is installed.
 
 ### Using pip
 
-`krisp_fasta` can be installed directly from the python repository (testpypi for now):
+`krisp_fasta` can be installed directly from the PyPI repository:
 
-`pip3 install -i https://test.pypi.org/simple/ krisp`
+`pip3 install krisp`
 
 
 ### Downloading from github
 
 Alternatively, `krisp_fasta` can be installed from source utilizing the Makefile in this repository.
-Simply run the following command in the directory with the donwloaded source files:
+Simply run the following command in the directory with the downloaded source files:
 
 `make install` 
 
@@ -70,7 +70,7 @@ All the functionality of `krisp_fasta` is provided through the command line and 
 In all the examples below, `krisp_fasta` is executed through the command line.
 
 In addition to `krisp_fasta` and `krisp_vcf`, installation also provides a second command line utility called `kstream`.
-`kstream` is a separate python program which extracts and parses kmers from an input fasta file.
+`kstream` is a separate python program which extracts and parses kmers from an input FASTA file.
 `krisp_fasta` utilizes `kstream` internally.
 Users of `krisp_fasta` are not required to use `kstream` directly.
 See examples below on `kstream` usage.
@@ -338,7 +338,7 @@ Here is a minimal command:
 `krisp_vcf metadata.csv reference.fasta --vcf variants.vcf --groups NA1 NA2 EU1`
 
 This will scan the variants in "variants.vcf" and look for diagnostic regions that distinguish samples labeled as "NA1", "NA2", or "EU1" from all other samples.
-The VCF file is provided with the option `--vcf` since it could also be piped standard input.
+The VCF file is provided with the option `--vcf` since it could also be piped from standard input.
 Which group each sample is assigned to is defined by the "metadata.csv" file.
 Since no output file was specified, CSV output is printed to the standard output and status updates are printed to standard error.
 When run on the command line, both the output (standard out) and the status updates (standard error) are printed to the screen, which is not ideal most of the time.

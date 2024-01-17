@@ -12,6 +12,8 @@ authors = [
 ]
 maintainers = [
   { name="Zachary S.L. Foster", email="zacharyfoster1989@gmail.com" },
+  { name="Andrew S. Tupper", email="andrew.s.tupper@gmail.com" },
+  { name="Niklaus J. Grunwald", email="niklaus.grunwald@oregonstate.edu" },
 ]
 description = "A lightweight tool for finding diagnostic regions in whole genome data"
 readme = "README.md"
@@ -28,7 +30,8 @@ dependencies = [
     "prettytable",
     "pandas",
     "prettytable",
-    "primer3-py"
+    "primjer3-py",
+    "colorama"
 ]
 
 [project.urls]
