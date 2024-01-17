@@ -1,11 +1,10 @@
-import pdb
 import sys
 import re
 import primer3
 from statistics import mean
 from Bio.Data import IUPACData
 from prettytable import PrettyTable
-from pudb.remote import set_trace
+# from pudb.remote import set_trace
 
 UNKNOWN_CHAR = "?"
 iupac_key = {tuple((x for x in sorted(v))): k for k, v in
@@ -27,18 +26,18 @@ primer3_col_names = [
 ]
 primer3_col_key = {n: n.replace("PRIMER_", "").replace("_0", "").lower() for n in primer3_col_names}
 
-class ForkedPdb(pdb.Pdb):
-    """A Pdb subclass that may be used
-    from a forked multiprocessing child
-
-    """
-    def interaction(self, *args, **kwargs):
-        _stdin = sys.stdin
-        try:
-            sys.stdin = open('/dev/stdin')
-            pdb.Pdb.interaction(self, *args, **kwargs)
-        finally:
-            sys.stdin = _stdin
+# class ForkedPdb(pdb.Pdb):
+#     """A Pdb subclass that may be used
+#     from a forked multiprocessing child
+# 
+#     """
+#     def interaction(self, *args, **kwargs):
+#         _stdin = sys.stdin
+#         try:
+#             sys.stdin = open('/dev/stdin')
+#             pdb.Pdb.interaction(self, *args, **kwargs)
+#         finally:
+#             sys.stdin = _stdin
 
 def collapse_to_iupac(seqs):
     """Combine sequences into a consensus using IUPAC ambiguity codes
