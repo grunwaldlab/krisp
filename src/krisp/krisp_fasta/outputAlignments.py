@@ -5,7 +5,7 @@ import os
 import sys
 from .shared import *
 from contextlib import contextmanager
-from pudb.remote import set_trace
+# from pudb.remote import set_trace
 
 primer3_col_names = [
     'PRIMER_PAIR_0_PRODUCT_SIZE',
