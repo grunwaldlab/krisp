@@ -2,6 +2,7 @@
 
 A python package for designing diagnostic CRISPR and other PCR-based diagnostic assays using whole genome data.
 
+![PyPI - License](https://img.shields.io/pypi/l/krisp)
 ![PyPI](https://img.shields.io/pypi/v/KRISP?label=pypi%20krisp)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/KRISP)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/krisp)
