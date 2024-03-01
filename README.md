@@ -34,7 +34,7 @@ Primer3 can then be used to identify primers in the conserved flanking regions a
 
 ## Requirements
 
-`krisp` requires python version 3.6 or greater and a UNIX-like operating system which provides the `sort` command line utility.
+`krisp` requires python version 3.9 or greater and a UNIX-like operating system which provides the `sort` command line utility.
 Most operating systems have `sort` installed by default as it is required by the POSIX standard.
 To see if `sort` is already installed, run:
 
