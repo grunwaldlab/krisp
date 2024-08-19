@@ -253,8 +253,9 @@ class GroupedVariant:
                 if min_freq is None:
                     alleles = sorted(list(set(data.alleles)))
                 else:
-                    min_depth = sum(data['AD']) * min_freq
-                    alleles = sorted(list(set([variant.alleles[i] for i, d in enumerate(data['AD']) if d > 0 and d >= min_depth])))
+                    depth = [0 if x is None else x for x in data['AD']]
+                    min_depth = sum(depth) * min_freq
+                    alleles = sorted(list(set([variant.alleles[i] for i, d in enumerate(depth) if d > 0 and d >= min_depth])))
                 alleles = [UNKNOWN_CHAR if a is None else a for a in alleles]
                 if hetero:
                     alleles = ["/".join(alleles)]
