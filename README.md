@@ -2,8 +2,11 @@
 
 A python package for designing diagnostic CRISPR and other PCR-based diagnostic assays using whole genome data.
 
+![PyPI - License](https://img.shields.io/pypi/l/krisp)
 ![PyPI](https://img.shields.io/pypi/v/KRISP?label=pypi%20krisp)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/KRISP)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/krisp)
+
 
 
 ## Overview
@@ -31,7 +34,7 @@ Primer3 can then be used to identify primers in the conserved flanking regions a
 
 ## Requirements
 
-`krisp` requires python version 3.6 or greater and a UNIX-like operating system which provides the `sort` command line utility.
+`krisp` requires python version 3.9 or greater and a UNIX-like operating system which provides the `sort` command line utility.
 Most operating systems have `sort` installed by default as it is required by the POSIX standard.
 To see if `sort` is already installed, run:
 
