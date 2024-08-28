@@ -1,44 +1,45 @@
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "krisp"
 version = "0.1.6"
+description = "A lightweight tool for finding diagnostic regions in whole genome data"
 authors = [
-  { name="Zachary S.L. Foster", email="zacharyfoster1989@gmail.com" },
-  { name="Andrew S. Tupper", email="andrew.s.tupper@gmail.com" },
-  { name="Niklaus J. Grunwald", email="niklaus.grunwald@oregonstate.edu" },
+    "Zachary S.L. Foster <zacharyfoster1989@gmail.com>",
+    "Andrew S. Tupper <andrew.s.tupper@gmail.com>",
+    "Niklaus J. Grunwald <niklaus.grunwald@oregonstate.edu>"
 ]
 maintainers = [
-  { name="Zachary S.L. Foster", email="zacharyfoster1989@gmail.com" },
-  { name="Andrew S. Tupper", email="andrew.s.tupper@gmail.com" },
-  { name="Niklaus J. Grunwald", email="niklaus.grunwald@oregonstate.edu" },
+    "Zachary S.L. Foster <zacharyfoster1989@gmail.com>",
+    "Andrew S. Tupper <andrew.s.tupper@gmail.com>",
+    "Niklaus J. Grunwald <niklaus.grunwald@oregonstate.edu>"
 ]
-description = "A lightweight tool for finding diagnostic regions in whole genome data"
 readme = "README.md"
-requires-python = ">=3.6"
+license = "MIT"
+homepage = "https://github.com/grunwaldlab/krisp"
+repository = "https://github.com/grunwaldlab/krisp"
+documentation = "https://github.com/grunwaldlab/krisp"
+keywords = ["genome", "diagnostic", "bioinformatics"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-]
-dependencies = [
-    "pysam",
-    "Bio",
-    "nltk",
-    "prettytable",
-    "pandas",
-    "prettytable",
-    "primer3-py",
-    "colorama"
+    "Operating System :: OS Independent"
 ]
 
-[project.urls]
-"Homepage" = "https://github.com/grunwaldlab/krisp"
-"Bug Tracker" = "https://github.com/grunwaldlab/krisp/issues"
+[tool.poetry.dependencies]
+python = ">=3.10"
+pysam = "^0.22.1"
+bio = "^1.7.1"
+nltk = "^3.9.1"
+prettytable = "^3.11.0"
+pandas = "^2.2.2"
+primer3-py = "^2.0.3"
+colorama = "^0.4.6"
 
-[project.scripts]
+
+[tool.poetry.scripts]
 krisp_fasta = "krisp.krisp_fasta.krisp_fasta:main"
 kstream = "krisp.kstream.kstream:main"
 krisp_vcf = "krisp.krisp_vcf.krisp_vcf:main"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
