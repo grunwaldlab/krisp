@@ -142,7 +142,7 @@ presentations
 scratch
 test_pinf_pmir_pipo
 .vscode
-
+.idea
 # Rstudio
 .Rproj.user
 *.Rproj
